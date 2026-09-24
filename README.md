@@ -1,131 +1,101 @@
-# 🎓 Student Admission App
+# ✦️ EduSphere — School Management System
 
-A simple student admission application built with:
+A comprehensive school management platform built **level by level**. Every role —
+**developer, school admin, staff, student and parent** — gets its own portal,
+locked down with Supabase **Row Level Security (RLS)**.
 
-| Layer      | Technology                                     |
-| ---------- | ---------------------------------------------- |
-| Frontend   | React 18 + Vite                                |
-| Database   | Supabase (PostgreSQL + Row Level Security)     |
-| Deployment | Vercel                                         |
-| Versioning | GitHub                                         |
-
----
-
-## ✨️ Features
-
-- Admission form (full name, email, phone, date of birth, gender, program, GPA, address)
-- Applications list with status badges (Pending / Approved / Rejected)
-- Duplicate-email protection (DB unique constraint + friendly error message)
-- Row Level Security policies in Supabase
-- Responsive UI, no build-time secrets committed
+| Stack       | Technology                                    |
+| ----------- | --------------------------------------------- |
+| Frontend    | React 18 + Vite 5 + React Router 7            |
+| Icons       | lucide-react                                  |
+| Database    | Supabase (PostgreSQL + Auth + RLS)            |
+| Deployment  | Vercel (auto-deploys from GitHub `main`)      |
+| Versioning  | GitHub                                        |
 
 ---
 
-## 🚀 Getting started
+## 🗺 Level roadmap
 
-### 1. Prerequisites
+| Level | Delivered                                      | Status |
+| ----- | ---------------------------------------------- | ------ |
+| 1     | Modern UI, Auth, 5 role portals, RLS foundation | ✅ live |
+| 2     | Students, staff & classes management            | ⏳ next |
+| 3     | Grades, attendance & timetable                  | pending |
+| 4     | Fees, payments & announcements                  | pending |
+| 5     | Developer portal, audit log & polish            | pending |
 
-- Node.js 18+ and npm
-- A [Supabase](https://supabase.com) account (free tier is fine)
-- A [GitHub](https://github.com) account
-- A [Vercel](https://vercel.com) account
+---
 
-### 2. Create the database schema in Supabase
+## 🚀 Level 1 — what you can do today
 
-1. Go to [Supabase Dashboard](https://app.supabase.com) → **New project**.
-2. Open **SQL Editor** → **New query**.
-3. Paste the contents of [`supabase/schema.sql`](supabase/schema.sql) and press **Run**.
-4. You should see `students` in **Table Editor** with RLS enabled.
+- **Public landing page** with animated hero + responsive layout (mobile drawer nav).
+- **Create an account** with a role: `developer`, `school_admin`, `staff`, `student`, `parent`.
+- **Sign in / sign out** (Supabase Auth, email + password).
+- **5 role portals**, each scoped by RLS:
+  - *Developer* — user directory + platform overview.
+  - *School admin / staff* — review & decide admission applications.
+  - *Student* — track your own submissions.
+  - *Parent* — family centre placeholder (children link in Level 2).
+- **Public admission application** (kept from v1) at `/apply`.
 
-### 3. Run the app locally
+---
+
+## ⚙️ Setup
+
+### 1. Database
+
+Open **Supabase Dashboard → SQL Editor** and run
+[`supabase/schema.sql`](supabase/schema.sql) — it is idempotent and can be
+re-run safely.
+
+This creates:
+
+- `profiles` — one row per auth user (`role`, `full_name`, `status`, …)
+- `students` — admission applications (from v1)
+- `public.get_user_role()` — a `SECURITY DEFINER` helper (Postgres 15+)
+  used by every RLS policy without recursion
+- `public.handle_new_user()` — trigger that auto-creates a profile when an
+  auth user signs up
+- RLS policies:
+
+| Table      | Policy                                                          |
+| ---------- | --------------------------------------------------------------- |
+| profiles   | own row (insert/select/update); admins/devs may list all         |
+| students   | anon insert; any authenticated user may read; staff decide status |
+
+### 2. App
 
 ```bash
-# Install dependencies
 npm install
-
-# Configure Supabase credentials
-cp .env.example .env
-# → Edit .env and paste your values from:
-#   Supabase Dashboard → Project Settings → API
-#   - VITE_SUPABASE_URL      (e.g. https://xxxx.supabase.co)
-#   - VITE_SUPABASE_ANON_KEY (the public anon key)
-
-# Start the dev server (http://localhost:3000)
-npm run dev
+cp .env.example .env      # fill VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+npm run dev               # http://localhost:3000
 ```
 
-> The anon key is safe to expose because Row Level Security is enabled.
-
-### 4. Production build
-
-```bash
-npm run build     # outputs to dist/
-npm run preview   # preview the production build locally
-```
+> Tip: in Supabase → **Authentication → Providers → Email**, you can disable
+> *Confirm email* to get instant sign-in during development.
 
 ---
 
-## 🌿 Supabase schema overview
+## 🔐 Security model
 
-The schema creates a single `students` table:
-
-| Column         | Type         | Notes                       |
-| -------------- | ------------ | --------------------------- |
-| `id`           | uuid (pk)    | Auto-generated             |
-| `full_name`    | text         | Required                   |
-| `email`        | text         | Required, unique           |
-| `phone`        | text         | Optional                   |
-| `date_of_birth`| date         | Optional                   |
-| `gender`       | text         | CHECK constraint           |
-| `address`      | text         | Optional                   |
-| `program`      | text         | Required                   |
-| `previous_gpa` | numeric(3,2) | CHECK 0.00 – 4.00          |
-| `status`       | text         | pending / approved / rejected |
-| `created_at`   | timestamptz  | Auto                        |
-| `updated_at`   | timestamptz  | Auto (trigger)              |
-
-Row Level Security is **enabled**. Policies:
-
-- ✅ **INSERT** — anon can submit applications
-- ✅ **SELECT** — anon can view applications *(demo only — remove for production)*
-- ✅ **UPDATE** — authenticated users can change status
+- **RLS is the source of truth.** The UI hides nav items and buttons by role,
+  but the database rejects anything a role isn't allowed to do.
+- `get_user_role()` is defined `SECURITY DEFINER`, so policies that call it do
+  not recurse.
+- Roles are self-selected at sign-up **for the demo**; production deployment
+  should provision accounts server-side (Level 5).
 
 ---
 
-## ▲ Deploy to Vercel
+## ▲ Deploy (automatic)
 
-### Option A — via GitHub (recommended)
-
-1. Create a repository on GitHub and push this project:
+This repository is connected to Vercel (`https://addme-gamma.vercel.app`).
+Every push to `main` triggers a production deployment:
 
 ```bash
-git init
 git add .
-git commit -m "Initial commit: student admission app"
-git branch -M main
-git remote add origin https://github.com/<your-username>/student-admission-app.git
-git push -u origin main
-```
-
-2. Go to [Vercel Dashboard](https://vercel.com) → **Add New Project**.
-
-3. Import your GitHub repository (Vercel auto-detects Vite).
-
-4. Add the environment variables (**Settings → Environment Variables**):
-
-   | Name                  | Value                        |
-   | --------------------- | ---------------------------- |
-   | `VITE_SUPABASE_URL`   | `https://xxxx.supabase.co`   |
-   | `VITE_SUPABASE_ANON_KEY` | your anon key             |
-
-5. Click **Deploy**. Done! 🎉
-
-### Option B — Vercel CLI (no GitHub needed)
-
-```bash
-npm i -g vercel
-vercel            # login + deploy (add the two VITE_ env vars when prompted)
-vercel --prod     # promote to production
+git commit -m "Level 1: auth + role portals + RLS"
+git push origin main
 ```
 
 ---
@@ -133,40 +103,18 @@ vercel --prod     # promote to production
 ## 🗂 Project structure
 
 ```
-student admission app/
-├── index.html
-├── package.json
-├── vite.config.js
-├── vercel.json
-├── .env.example
-├── supabase/
-│   └── schema.sql          # DB schema + RLS policies
+├── index.html                  # fonts, meta, SPA entry
+├── vercel.json                 # static + SPA rewrite
+├── supabase/schema.sql         # full schema + RLS (Level 1)
 └── src/
-    ├── main.jsx            # entry point
-    ├── App.jsx             # layout & state
-    ├── index.css
+    ├── App.jsx                 # routes + auth gate
     ├── lib/
-    │   └── supabase.js     # Supabase client
-    └── components/
-        ├── AdmissionForm.jsx
-        └── StudentList.jsx
+    │   ├── supabase.js         # client
+    │   ├── auth.js             # session + sign in/up helpers
+    │   └── roles.js            # role metadata (UI)
+    ├── layout/                 # AppShell, Sidebar, Topbar (responsive)
+    ├── pages/                  # Landing, Auth, Apply, Settings
+    ├── dashboards/             # Developer/Admin/Staff/Student/Parent + tools
+    ├── components/             # shared UI kit
+    └── index.css               # design system (animations + responsive)
 ```
-
----
-
-## 🔒 Security notes
-
-- Keys used in the browser must be **published keys** (`anon`), never `service_role`.
-- The SELECT policy is wide open for demo simplicity. To lock it down:
-  1. Delete the `anon can read applications` policy in Supabase.
-  2. Create a `verified` application first (or swap to Supabase Auth), then scope policies to `authenticated`.
-
----
-
-## 🛠 Useful commands
-
-| Command            | What it does                 |
-| ------------------ | ---------------------------- |
-| `npm run dev`      | Start dev server on :3000    |
-| `npm run build`    | Production build to `dist/`  |
-| `npm run preview`  | Preview the production build |

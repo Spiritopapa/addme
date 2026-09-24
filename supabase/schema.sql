@@ -1,21 +1,146 @@
 -- ============================================================================
--- Student Admission App — Supabase Schema
+-- EduSphere — School Management System · Schema (Level 1)
 -- ----------------------------------------------------------------------------
--- How to run:
---   Option A (recommended): Supabase Dashboard → SQL Editor → paste & Run
---   Option B (CLI):          supabase db push   (after `supabase init`)
--- ----------------------------------------------------------------------------
--- ⚠️ The RLS policies below allow anyone (with the public anon key) to submit
---    and VIEW applications. That is intentional for this simple demo portal.
---    For production, remove "anon can read applications" and require auth.
+-- Run in: Supabase Dashboard → SQL Editor → paste & Run
+-- Idempotent: safe to run multiple times.
+--
+-- Level 1 adds:
+--   • auth → profiles (role-based accounts for every user)
+--   • get_user_role() — SECURITY DEFINER helper used by all RLS policies
+--   • handle_new_user() — auto-creates a profile when an auth user is created
+--   • Row Level Security on profiles + students
 -- ============================================================================
 
--- Optional: drop and start fresh (uncomment when you want a clean slate)
--- drop table if exists public.students cascade;
+-- ────────────────────────────────────────────────────────────────────────
+-- 0. Roles
+--    developer · school_admin · staff · student · parent
+-- ────────────────────────────────────────────────────────────────────────
+create type if not exists public.app_role as enum (
+  'developer', 'school_admin', 'staff', 'student', 'parent'
+);
 
--- ----------------------------------------------------------------------------
--- 1. Students table
--- ----------------------------------------------------------------------------
+-- ────────────────────────────────────────────────────────────────────────
+-- 1. Profiles (one row per auth user)
+-- ────────────────────────────────────────────────────────────────────────
+create table if not exists public.profiles (
+  id         uuid primary key references auth.users (id) on delete cascade,
+  email      text,
+  full_name  text not null default '',
+  role       public.app_role not null default 'student',
+  avatar_url text,
+  status     text not null default 'active'
+             check (status in ('active', 'suspended')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+-- ────────────────────────────────────────────────────────────────────────
+-- 2. shared updated_at trigger helper
+-- ────────────────────────────────────────────────────────────────────────
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_set_updated_at on public.profiles;
+create trigger profiles_set_updated_at
+  before update on public.profiles
+  for each row
+  execute function public.set_updated_at();
+
+-- ────────────────────────────────────────────────────────────────────────
+-- 3. get_user_role() — SECURITY DEFINER (Postgres 15+)
+--    Runs as the function owner, so it may call profiles without recursion.
+--    Used inside RLS policies of every table.
+-- ────────────────────────────────────────────────────────────────────────
+create or replace function public.get_user_role()
+returns public.app_role
+language sql
+stable
+security definer
+as $$
+  select role from public.profiles where id = auth.uid()
+$$;
+
+-- Convenience predicates used by policies
+create or replace function public.is_school_staff()
+returns boolean
+language sql
+stable
+security definer
+as $$
+  select public.get_user_role() in ('school_admin', 'staff', 'developer')
+$$;
+
+-- ────────────────────────────────────────────────────────────────────────
+-- 4. Auto-create profile on auth sign-up
+--    full_name / role come from the raw user metadata sent at sign-up.
+-- ────────────────────────────────────────────────────────────────────────
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  insert into public.profiles (id, email, full_name, role, status)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'full_name', ''),
+    coalesce((new.raw_user_meta_data ->> 'role'), 'student')::public.app_role,
+    'active'
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row
+  execute function public.handle_new_user();
+
+-- ────────────────────────────────────────────────────────────────────────
+-- 5. profiles RLS
+--    • insert: users create exactly their own row (auth.uid() = id)
+--    • select: your own row, or school_admin/developer may list everyone
+--    • update: your own row (name/avatar); role changes stay server-side
+-- ────────────────────────────────────────────────────────────────────────
+drop policy if exists "profiles insert own" on public.profiles;
+create policy "profiles insert own"
+  on public.profiles
+  for insert
+  to authenticated
+  with check (auth.uid() = id);
+
+drop policy if exists "profiles select own or admin" on public.profiles;
+create policy "profiles select own or admin"
+  on public.profiles
+  for select
+  to authenticated
+  using (
+    auth.uid() = id
+    or public.get_user_role() in ('school_admin', 'developer')
+  );
+
+drop policy if exists "profiles update own" on public.profiles;
+create policy "profiles update own"
+  on public.profiles
+  for update
+  to authenticated
+  with check (auth.uid() = id);
+
+-- ────────────────────────────────────────────────────────────────────────
+-- 6. Students (admission applications — carried over from v1)
+-- ────────────────────────────────────────────────────────────────────────
 create table if not exists public.students (
   id            uuid primary key default gen_random_uuid(),
   full_name     text not null,
@@ -30,58 +155,41 @@ create table if not exists public.students (
                 check (status in ('pending', 'approved', 'rejected')),
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
-
-  -- A student should not be able to apply twice with the same email
   constraint students_email_unique unique (email)
 );
 
--- Helpful index for the list view (sorted by newest first)
 create index if not exists students_created_at_idx
   on public.students (created_at desc);
 
--- ----------------------------------------------------------------------------
--- 2. Trigger: keep "updated_at" fresh on every row change
--- ----------------------------------------------------------------------------
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
 drop trigger if exists students_set_updated_at on public.students;
-
 create trigger students_set_updated_at
   before update on public.students
   for each row
   execute function public.set_updated_at();
 
--- ----------------------------------------------------------------------------
--- 3. Row Level Security
--- ----------------------------------------------------------------------------
 alter table public.students enable row level security;
 
--- Anyone with the anon key may submit an admission application
-create policy "anon can insert applications"
+-- Anyone (public anon key) may submit an admission application
+drop policy if exists "anon can insert applications" on public.students;
+drop policy if exists "anon may insert applications" on public.students;
+create policy "anon may insert applications"
   on public.students
   for insert
   to anon, authenticated
   with check (true);
 
--- (DEMO ONLY) Anyone with the anon key may read submitted applications.
--- For production: delete this policy, or scope to authenticated users.
-create policy "anon can read applications"
+-- Authenticated users may view applications (Level 1 scope; roles come in L2)
+drop policy if exists "authenticated can read applications" on public.students;
+create policy "authenticated can read applications"
   on public.students
   for select
-  to anon, authenticated
+  to authenticated
   using (true);
 
--- Authenticated users (dashboard/back-office) may update the admission status
-create policy "authenticated can update application status"
+-- Staff / admin / developer decide applications
+drop policy if exists "staff can update application status" on public.students;
+create policy "staff can update application status"
   on public.students
   for update
   to authenticated
-  with check (true);
+  using (public.is_school_staff());

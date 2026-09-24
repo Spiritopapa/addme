@@ -1,42 +1,48 @@
-import { useState } from 'react';
-import AdmissionForm from './components/AdmissionForm.jsx';
-import StudentList from './components/StudentList.jsx';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useSession } from './lib/auth.js';
 import { supabaseConfigured } from './lib/supabase.js';
+import Landing from './pages/Landing.jsx';
+import AuthPage from './pages/AuthPage.jsx';
+import ApplyPage from './pages/ApplyPage.jsx';
+import AppShell from './layout/AppShell.jsx';
+import SettingsPlaceholder from './pages/SettingsPlaceholder.jsx';
+import LoadingScreen from './components/ui/LoadingScreen.jsx';
+import DashboardRouter from './dashboards/DashboardRouter.jsx';
+import ApplicationsView from './dashboards/ApplicationsView.jsx';
+import UsersDirectory from './dashboards/UsersDirectory.jsx';
 
 export default function App() {
-  const [refreshKey, setRefreshKey] = useState(0);
+  const location = useLocation();
+  const { user, profile, loading } = useSession();
+
+  // Route transition — key the shell so it re-runs its entrance animation.
+  const pageKey = `${location.pathname} ${location.hash}`;
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  const session = { user, profile };
 
   return (
-    <div className="app">
-      <header className="header">
-        <h1>🎓 Student Admission Portal</h1>
-        <p>Simple admission application built with React, Supabase &amp; Vercel.</p>
-      </header>
-
-      {!supabaseConfigured && (
-        <div className="banner banner-warning" role="alert">
-          ⚠️ Supabase is not configured yet. Copy <code>.env.example</code> to{' '}
-          <code>.env</code>, fill in your <code>VITE_SUPABASE_URL</code> and{' '}
-          <code>VITE_SUPABASE_ANON_KEY</code>, then restart{' '}
-          <code>npm run dev</code>.
-        </div>
-      )}
-
-      <main className="layout">
-        <section className="panel">
-          <h2>Admission form</h2>
-          <AdmissionForm onSubmitted={() => setRefreshKey((key) => key + 1)} />
-        </section>
-
-        <section className="panel">
-          <h2>Applications</h2>
-          <StudentList refreshKey={refreshKey} />
-        </section>
-      </main>
-
-      <footer className="footer">
-        Student Admission App · React + Supabase · Deployed on Vercel
-      </footer>
-    </div>
+    <Routes>
+      <Route path="/" element={<Landing session={session} />} />
+      <Route path="/auth" element={user ? <Navigate to="/app" replace /> : <AuthPage />} />
+      <Route
+        path="/apply"
+        element={supabaseConfigured ? <ApplyPage /> : <Landing session={session} />}
+      />
+      <Route
+        path="/app"
+        element={user ? <AppShell session={session} pageKey={pageKey} /> : <Navigate to="/auth" replace />}
+      >
+        <Route index element={<DashboardRouter session={session} />} />
+        <Route path="applications" element={<ApplicationsView session={session} />} />
+        <Route path="users" element={<UsersDirectory session={session} />} />
+        <Route path="settings" element={<SettingsPlaceholder />} />
+        <Route path="*" element={<Navigate to="/app" replace />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

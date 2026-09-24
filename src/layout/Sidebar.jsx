@@ -1,0 +1,112 @@
+import { useLocation, Link } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  FileText,
+  Users,
+  GraduationCap,
+  BookOpen,
+  CalendarDays,
+  WalletCards,
+  Settings,
+  Lock,
+  ShieldCheck,
+} from 'lucide-react';
+import { userInitials } from '../lib/auth.js';
+import { ROLE_ADMIN, ROLE_STAFF, ROLE_DEVELOPER, roleInfo } from '../lib/roles.js';
+
+const COMING_SOON = [
+  { label: 'Students', icon: GraduationCap, level: 'Level 2' },
+  { label: 'Staff & classes', icon: BookOpen, level: 'Level 2' },
+  { label: 'Grades & attendance', icon: CalendarDays, level: 'Level 3' },
+  { label: 'Fees & payments', icon: WalletCards, level: 'Level 4' },
+];
+
+export default function Sidebar({ session, onNavigate }) {
+  const { profile } = session;
+  const location = useLocation();
+  const role = profile?.role;
+  const meta = roleInfo(role);
+  const onAppSub = (path) => (location.pathname === `/app${path}`) ||
+    (path === '' && location.pathname === '/app');
+
+  const primaryItems = [
+    { label: 'Dashboard', to: '/app', icon: LayoutDashboard, show: true },
+    {
+      label: 'Applications',
+      to: '/app/applications',
+      icon: FileText,
+      show: role === ROLE_ADMIN || role === ROLE_STAFF || role === ROLE_DEVELOPER,
+      badge: 'L1',
+    },
+    {
+      label: 'User directory',
+      to: '/app/users',
+      icon: Users,
+      show: role === ROLE_DEVELOPER,
+      badge: 'Dev',
+    },
+  ].filter((item) => item.show);
+
+  return (
+    <aside className="sidebar-inner">
+      <Link to="/" className="sidebar-brand" aria-label="EduSphere home">
+        <span className="sidebar-logo">✦</span>
+        <span className="sidebar-brand-name">EduSphere</span>
+      </Link>
+
+      <div className="sidebar-user">
+        <span className="avatar-sm" style={{ background: meta.soft, color: meta.color }}>
+          {userInitials(profile?.full_name)}
+        </span>
+        <div className="sidebar-user-meta">
+          <p className="sidebar-user-name">{profile?.full_name ?? '—'}</p>
+          <span className="role-chip" style={{ color: meta.color, background: meta.soft }}>
+            {meta.label}
+          </span>
+        </div>
+      </div>
+
+      <nav className="sidebar-nav" aria-label="Main">
+        <p className="sidebar-label">Menu</p>
+        <ul>
+          {primaryItems.map((item) => (
+            <li key={item.to}>
+              <Link
+                to={item.to}
+                className={`nav-item ${onAppSub(item.to === '/app' ? '' : item.to.replace('/app', '')) ? 'active' : ''}`}
+                onClick={onNavigate}
+              >
+                <item.icon size={18} />
+                <span>{item.label}</span>
+                {item.badge && <em className="nav-badge">{item.badge}</em>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        <p className="sidebar-label">Coming soon</p>
+        <ul>
+          {COMING_SOON.map((item) => (
+            <li key={item.label}>
+              <span className="nav-item disabled" aria-disabled="true">
+                <Lock size={15} />
+                <span>{item.label}</span>
+                <em className="nav-badge muted">{item.level}</em>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="sidebar-footer">
+        <Link to="/app/settings" className="nav-item" onClick={onNavigate}>
+          <Settings size={18} />
+          <span>Settings</span>
+        </Link>
+        <p className="sidebar-security">
+          <ShieldCheck size={13} /> RLS enforced
+        </p>
+      </div>
+    </aside>
+  );
+}

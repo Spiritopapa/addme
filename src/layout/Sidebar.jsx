@@ -10,15 +10,18 @@ import {
   Settings,
   Lock,
   ShieldCheck,
+  UserCog,
+  Clock,
+  Megaphone,
 } from 'lucide-react';
 import { userInitials } from '../lib/auth.js';
 import { ROLE_ADMIN, ROLE_STAFF, ROLE_DEVELOPER, roleInfo } from '../lib/roles.js';
 
 const COMING_SOON = [
-  { label: 'Students', icon: GraduationCap, level: 'Level 2' },
-  { label: 'Staff & classes', icon: BookOpen, level: 'Level 2' },
   { label: 'Grades & attendance', icon: CalendarDays, level: 'Level 3' },
+  { label: 'Weekly timetable', icon: Clock, level: 'Level 3' },
   { label: 'Fees & payments', icon: WalletCards, level: 'Level 4' },
+  { label: 'Announcements', icon: Megaphone, level: 'Level 4' },
 ];
 
 export default function Sidebar({ session, onNavigate }) {
@@ -37,6 +40,27 @@ export default function Sidebar({ session, onNavigate }) {
       icon: FileText,
       show: role === ROLE_ADMIN || role === ROLE_STAFF || role === ROLE_DEVELOPER,
       badge: 'L1',
+    },
+    {
+      label: 'Students',
+      to: '/app/students',
+      icon: GraduationCap,
+      show: role === ROLE_ADMIN || role === ROLE_STAFF || role === ROLE_DEVELOPER,
+      badge: 'L2',
+    },
+    {
+      label: 'Classes',
+      to: '/app/classes',
+      icon: BookOpen,
+      show: role === ROLE_ADMIN || role === ROLE_STAFF || role === ROLE_DEVELOPER,
+      badge: 'L2',
+    },
+    {
+      label: 'Staff',
+      to: '/app/staff',
+      icon: UserCog,
+      show: role === ROLE_ADMIN || role === ROLE_DEVELOPER,
+      badge: 'L2',
     },
     {
       label: 'User directory',

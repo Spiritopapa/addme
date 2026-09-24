@@ -82,3 +82,25 @@ export const ROLE_RANK = {
 export function canManageApplications(user) {
   return hasRole(user, ROLE_DEVELOPER, ROLE_ADMIN, ROLE_STAFF);
 }
+
+// ── Level 2 permissions ───────────────────────────────────────────────────
+
+/** Write/deletes school records (classes, staff, students, links). */
+export function canManage(user) {
+  return hasRole(user, ROLE_DEVELOPER, ROLE_ADMIN);
+}
+
+/** May open the Students roster / Classes pages. */
+export function canSeeStudents(user) {
+  return hasRole(user, ROLE_DEVELOPER, ROLE_ADMIN, ROLE_STAFF);
+}
+
+/** May open the Staff directory page. */
+export function canSeeStaff(user) {
+  return canManage(user);
+}
+
+/** May open the Classes page. */
+export function canSeeClasses(user) {
+  return canSeeStudents(user);
+}

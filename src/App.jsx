@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useSession } from './lib/auth.js';
 import { supabaseConfigured } from './lib/supabase.js';
+import { canSeeStudents, canSeeClasses, canSeeStaff } from './lib/roles.js';
 import Landing from './pages/Landing.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import ApplyPage from './pages/ApplyPage.jsx';
@@ -10,6 +11,9 @@ import LoadingScreen from './components/ui/LoadingScreen.jsx';
 import DashboardRouter from './dashboards/DashboardRouter.jsx';
 import ApplicationsView from './dashboards/ApplicationsView.jsx';
 import UsersDirectory from './dashboards/UsersDirectory.jsx';
+import StudentsView from './dashboards/StudentsView.jsx';
+import ClassesView from './dashboards/ClassesView.jsx';
+import StaffView from './dashboards/StaffView.jsx';
 
 export default function App() {
   const location = useLocation();
@@ -38,6 +42,18 @@ export default function App() {
       >
         <Route index element={<DashboardRouter session={session} />} />
         <Route path="applications" element={<ApplicationsView session={session} />} />
+        <Route
+          path="students"
+          element={canSeeStudents(user) ? <StudentsView session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="classes"
+          element={canSeeClasses(user) ? <ClassesView session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="staff"
+          element={canSeeStaff(user) ? <StaffView session={session} /> : <Navigate to="/app" replace />}
+        />
         <Route path="users" element={<UsersDirectory session={session} />} />
         <Route path="settings" element={<SettingsPlaceholder />} />
         <Route path="*" element={<Navigate to="/app" replace />} />

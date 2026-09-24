@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { UserRound, ClipboardList, Users, FileText } from 'lucide-react';
+import { UserRound, ClipboardList, Users, BookOpen, UserCog, GraduationCap } from 'lucide-react';
 import StatCard from '../components/ui/StatCard.jsx';
 import { WelcomeBanner, RoadmapCard } from './Shared.jsx';
 import { formatDate, userInitials } from '../lib/auth.js';
 import { supabase } from '../lib/supabase.js';
 
 export default function AdminDashboard({ session }) {
-  const [data, setData] = useState({ users: 0, pending: 0, recent: [] });
+  const [data, setData] = useState({ classes: 0, staff: 0, students: 0, pending: 0, recent: [] });
 
   const load = async () => {
-    const { data: users } = await supabase.from('profiles').select('id');
+    const { data: classes } = await supabase.from('classes').select('id');
+    const { data: staff } = await supabase.from('staff_records').select('id');
+    const { data: students } = await supabase.from('student_records').select('id');
     const { data: pending, count } = await supabase
       .from('students')
       .select('*', { count: 'exact' })
@@ -17,7 +19,9 @@ export default function AdminDashboard({ session }) {
       .order('created_at', { ascending: false })
       .limit(5);
     setData({
-      users: users?.length ?? 0,
+      classes: classes?.length ?? 0,
+      staff: staff?.length ?? 0,
+      students: students?.length ?? 0,
       pending: count ?? pending?.length ?? 0,
       recent: pending ?? [],
     });
@@ -32,10 +36,10 @@ export default function AdminDashboard({ session }) {
       <WelcomeBanner session={session} />
 
       <div className="stat-grid">
-        <StatCard label="Pending applications" value={data.pending} icon={<ClipboardList size={20} />} tone="amber" delay={0} />
-        <StatCard label="Registered users" value={data.users} icon={<Users size={20} />} tone="blue" delay={80} />
-        <StatCard label="Role portals" value={5} icon={<UserRound size={20} />} tone="violet" delay={160} />
-        <StatCard label="Module" value="Live" icon={<FileText size={20} />} tone="emerald" delay={240} />
+        <StatCard label="Students" value={data.students} icon={<GraduationCap size={20} />} tone="blue" delay={0} />
+        <StatCard label="Classes" value={data.classes} icon={<BookOpen size={20} />} tone="violet" delay={80} />
+        <StatCard label="Staff" value={data.staff} icon={<UserCog size={20} />} tone="emerald" delay={160} />
+        <StatCard label="Pending applications" value={data.pending} icon={<ClipboardList size={20} />} tone="amber" delay={240} />
       </div>
 
       <section className="card">
@@ -68,7 +72,7 @@ export default function AdminDashboard({ session }) {
           </table>
         )}
         <p className="card-note">
-          Review & decide applications in the <strong>Applications</strong> module.
+          Manage classes, staff and the student roster from the sidebar.
         </p>
       </section>
 

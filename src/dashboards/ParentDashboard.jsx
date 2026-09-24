@@ -1,32 +1,84 @@
-import { HeartHandshake, Users, WalletCards, GraduationCap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Users, HeartHandshake, GraduationCap, WalletCards, School } from 'lucide-react';
 import StatCard from '../components/ui/StatCard.jsx';
 import { WelcomeBanner, RoadmapCard } from './Shared.jsx';
+import { supabase } from '../lib/supabase.js';
 
 export default function ParentDashboard({ session }) {
+  const { profile } = session;
+  const [children, setChildren] = useState(null);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    void (async () => {
+      const { data: links } = await supabase
+        .from('guardian_links')
+        .select('student_record_id, relation')
+        .eq('guardian_profile_id', profile.id);
+
+      const ids = (links ?? []).map((l) => l.student_record_id);
+      let records = [];
+      let classes = [];
+      if (ids.length > 0) {
+        const { data } = await supabase.from('student_records').select('*').in('id', ids);
+        records = data ?? [];
+        const classIds = records.map((r) => r.class_id).filter(Boolean);
+        if (classIds.length > 0) {
+          const { data: cls } = await supabase.from('classes').select('id, name').in('id', classIds);
+          classes = cls ?? [];
+        }
+      }
+      const className = (id) => classes.find((c) => c.id === id)?.name ?? '—';
+      setChildren(records.map((r) => ({
+        ...r,
+        class_name: className(r.class_id),
+        relation: links?.find((l) => l.student_record_id === r.id)?.relation ?? 'Guardian',
+      })));
+    })();
+  }, [profile?.id]);
+
   return (
     <div className="dashboard">
       <WelcomeBanner session={session} />
 
       <div className="stat-grid">
-        <StatCard label="Children linked" value="L2" icon={<Users size={20} />} tone="amber" delay={0} />
+        <StatCard label="Children linked" value={children ? children.length : '…'} icon={<Users size={20} />} tone="amber" delay={0} />
         <StatCard label="My child’s GPA" value="L3" icon={<GraduationCap size={20} />} tone="violet" delay={80} />
         <StatCard label="Attendance" value="L3" icon={<HeartHandshake size={20} />} tone="blue" delay={160} />
         <StatCard label="Fees due" value="L4" icon={<WalletCards size={20} />} tone="emerald" delay={240} />
       </div>
 
-      <section className="card">
-        <h3 className="card-title">Your family centre (Level 2)</h3>
-        <p className="card-note">
-          When your child’s account is linked to you, this portal becomes their
-          progress dashboard — grades, attendance, fees and school news in one
-          place.
-        </p>
-        <div className="skeleton-row" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-      </section>
+      {children === null ? (
+        <div className="card"><div className="skeleton-table" aria-hidden="true" /></div>
+      ) : children.length === 0 ? (
+        <section className="card">
+          <h3 className="card-title">Your family centre</h3>
+          <p className="card-note">
+            No children are linked to your account yet. When a school admin links
+            your child to you, their class & progress appear here — RLS keeps
+            other pupils invisible.
+          </p>
+        </section>
+      ) : (
+        <section className="card">
+          <h3 className="card-title">My children</h3>
+          <div className="mini-class-grid">
+            {children.map((c) => (
+              <article key={c.id} className="mini-class">
+                <header>
+                  <span className="cell-avatar"><School size={14} /></span>
+                  <strong>{c.full_name}</strong>
+                  <span>{c.admission_no}</span>
+                </header>
+                <p>Class: <strong>{c.class_name}</strong></p>
+                <p className="card-note">
+                  {c.relation} · {c.status} {c.guardian_name ? `· ${c.guardian_name}` : ''}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <RoadmapCard compact />
     </div>

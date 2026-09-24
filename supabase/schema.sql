@@ -193,3 +193,196 @@ create policy "staff can update application status"
   for update
   to authenticated
   using (public.is_school_staff());
+
+-- ════════════════════════════════════════════════════════════════════════
+-- 7. LEVEL 2 — Classes, staff records, student records, guardian links
+-- ════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.classes (
+  id                uuid primary key default gen_random_uuid(),
+  name              text not null,
+  code              text not null unique,
+  description       text,
+  class_teacher_id  uuid references public.profiles (id),
+  class_teacher_name text,   -- denormalized so students/parents can read it under RLS
+  academic_year     text not null default '2026/2027',
+  capacity          integer not null default 30 check (capacity > 0 and capacity <= 200),
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+
+create table if not exists public.staff_records (
+  id          uuid primary key default gen_random_uuid(),
+  profile_id  uuid references public.profiles (id) unique,
+  full_name   text not null,
+  email       text,
+  employee_no text not null unique,
+  department  text not null default 'Teaching',
+  position    text not null default 'Teacher',
+  phone       text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create table if not exists public.student_records (
+  id              uuid primary key default gen_random_uuid(),
+  profile_id      uuid references public.profiles (id),
+  admission_no    text not null unique,
+  full_name       text not null,
+  email           text,
+  class_id        uuid references public.classes (id),
+  date_of_birth   date,
+  gender          text check (gender in ('female', 'male', 'other')),
+  guardian_name   text,
+  guardian_phone  text,
+  address         text,
+  enrollment_date date not null default current_date,
+  status          text not null default 'active'
+                  check (status in ('active', 'graduated', 'withdrawn')),
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists public.guardian_links (
+  id                    uuid primary key default gen_random_uuid(),
+  guardian_profile_id   uuid not null references public.profiles (id) on delete cascade,
+  student_record_id     uuid not null references public.student_records (id) on delete cascade,
+  relation              text not null default 'Parent',
+  created_at            timestamptz not null default now(),
+  constraint guardian_links_pair_unique unique (guardian_profile_id, student_record_id)
+);
+
+-- updated_at triggers
+drop trigger if exists classes_set_updated_at on public.classes;
+create trigger classes_set_updated_at before update on public.classes
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists staff_records_set_updated_at on public.staff_records;
+create trigger staff_records_set_updated_at before update on public.staff_records
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists student_records_set_updated_at on public.student_records;
+create trigger student_records_set_updated_at before update on public.student_records
+  for each row execute function public.set_updated_at();
+
+-- helpful indexes
+create index if not exists student_records_class_idx on public.student_records (class_id);
+create index if not exists student_records_profile_idx on public.student_records (profile_id);
+create index if not exists guardian_links_parent_idx on public.guardian_links (guardian_profile_id);
+create index if not exists classes_teacher_idx on public.classes (class_teacher_id);
+
+-- ── 8. admin_set_role — SECURITY DEFINER RPC ─────────────────────────────
+--    Lets school admins & developers provision accounts (used by the UI).
+--    Refuses to remove the last developer account.
+create or replace function public.admin_set_role(p_user_id uuid, p_role public.app_role)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if public.get_user_role() not in ('school_admin', 'developer') then
+    raise exception 'Only school admins and developers can change roles';
+  end if;
+
+  if p_role <> 'developer'
+     and (select role from public.profiles where id = p_user_id) = 'developer'
+     and (select count(*) from public.profiles where role = 'developer') <= 1 then
+    raise exception 'Cannot remove the last developer account';
+  end if;
+
+  update public.profiles set role = p_role, updated_at = now() where id = p_user_id;
+end;
+$$;
+
+-- ── 9. classes RLS ────────────────────────────────────────────────────────
+--    Any authenticated user may read class names; only admins/devs write.
+alter table public.classes enable row level security;
+
+drop policy if exists "classes read authenticated" on public.classes;
+create policy "classes read authenticated"
+  on public.classes for select to authenticated using (true);
+
+drop policy if exists "classes write staff" on public.classes;
+create policy "classes write staff"
+  on public.classes
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));
+
+-- ── 10. staff_records RLS ────────────────────────────────────────────────
+--    Read: yourself, admins, developers, other staff (directory).
+--    Write: admins & developers only.
+alter table public.staff_records enable row level security;
+
+drop policy if exists "staff_records read" on public.staff_records;
+create policy "staff_records read"
+  on public.staff_records
+  for select
+  to authenticated
+  using (
+    auth.uid() = profile_id
+    or public.get_user_role() in ('school_admin', 'developer', 'staff')
+  );
+
+drop policy if exists "staff_records write" on public.staff_records;
+create policy "staff_records write"
+  on public.staff_records
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));
+
+-- ── 11. student_records RLS ──────────────────────────────────────────────
+--    Read:  admins/devs · staff (only their own classes) · the student ·
+--           parents linked to that student.
+--    Write: admins & developers only.
+alter table public.student_records enable row level security;
+
+drop policy if exists "student_records read" on public.student_records;
+create policy "student_records read"
+  on public.student_records
+  for select
+  to authenticated
+  using (
+    auth.uid() = profile_id
+    or public.get_user_role() in ('school_admin', 'developer')
+    or (
+      public.get_user_role() = 'staff'
+      and class_id in (
+        select c.id from public.classes c where c.class_teacher_id = auth.uid()
+      )
+    )
+    or id in (
+      select gl.student_record_id
+      from public.guardian_links gl
+      where gl.guardian_profile_id = auth.uid()
+    )
+  );
+
+drop policy if exists "student_records write" on public.student_records;
+create policy "student_records write"
+  on public.student_records
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));
+
+-- ── 12. guardian_links RLS ───────────────────────────────────────────────
+--    Read: the parent themselves, admins & developers.
+--    Write: admins & developers only.
+alter table public.guardian_links enable row level security;
+
+drop policy if exists "guardian_links read" on public.guardian_links;
+create policy "guardian_links read"
+  on public.guardian_links
+  for select
+  to authenticated
+  using (
+    guardian_profile_id = auth.uid()
+    or public.get_user_role() in ('school_admin', 'developer')
+  );
+
+drop policy if exists "guardian_links write" on public.guardian_links;
+create policy "guardian_links write"
+  on public.guardian_links
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));

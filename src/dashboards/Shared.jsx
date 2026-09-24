@@ -24,15 +24,14 @@ export function WelcomeBanner({ session }) {
         </p>
       </div>
       <span className="welcome-chip">
-        <Rocket size={16} /> Level 1 · live
+        <Rocket size={16} /> Level 2 · live
       </span>
     </div>
   );
 }
 
 const ROADMAP = [
-  { level: 'Level 2', title: 'Students, staff & classes', text: 'Full management CRUD for admins and class assignments.' },
-  { level: 'Level 3', title: 'Grades, attendance & timetable', text: 'Staff records marks; students & parents track progress.' },
+  { level: 'Level 3', title: 'Grades, attendance & timetable', text: 'Staff record marks & attendance; students & parents track progress.' },
   { level: 'Level 4', title: 'Fees, payments & announcements', text: 'Invoices, receipts, and school-wide broadcasts.' },
   { level: 'Level 5', title: 'Developer portal & polish', text: 'Audit log, user management and system health.' },
 ];

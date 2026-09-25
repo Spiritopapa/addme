@@ -82,8 +82,11 @@ npm run dev               # http://localhost:3000
   but the database rejects anything a role isn't allowed to do.
 - **Role governance (v1.1):**
   - The **developer (owner)** is bootstrap-created — the very first account
-    ever created becomes the developer and can **never** be created, modified
-    or deleted again through the app.
+    ever created becomes the developer. If the owner account is ever deleted
+    from Supabase Authentication, the next account created **once** becomes
+    the developer again (a recovery path shown on the sign-in page); apart
+    from that, developer accounts can never be created, modified or deleted
+    through the app.
   - Everyone else joins with a **one-time registration code** issued by a
     school admin (staff/student/parent) or the developer (also school_admin).
     Codes assign the role server-side; roles are never self-selected.

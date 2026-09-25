@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, User, Sparkles, LogIn, ArrowRight, KeyRound } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, User, Sparkles, LogIn, ArrowRight, KeyRound, Crown } from 'lucide-react';
 import { signIn, signUp } from '../lib/auth.js';
+import { supabase } from '../lib/supabase.js';
 
 const MODES = { SIGN_IN: 'signin', SIGN_UP: 'signup' };
 
@@ -12,6 +13,13 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  // True when no developer account exists → the next sign-up becomes the owner
+  // (fresh install or the owner was deleted) and needs no registration code.
+  const [setupMode, setSetupMode] = useState(null);
+
+  useEffect(() => {
+    void supabase.rpc('should_bootstrap_owner').then(({ data }) => setSetupMode(!!data));
+  }, []);
 
   const update = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -113,6 +121,13 @@ export default function AuthPage() {
           <form className="auth-form" onSubmit={handleSubmit} noValidate>
             {mode === MODES.SIGN_UP && (
               <>
+                {setupMode === true && (
+                  <div className="banner banner-warning owner-setup" role="status">
+                    <Crown size={15} /> Setup / recovery mode — no owner account
+                    exists. The next account created becomes the app{' '}
+                    <strong>developer</strong> and does not need a registration code.
+                  </div>
+                )}
                 <div className="field">
                   <label htmlFor="fullName">Full name</label>
                   <div className="input-icon">
@@ -130,7 +145,9 @@ export default function AuthPage() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="regCode">School registration code</label>
+                  <label htmlFor="regCode">
+                    {setupMode === true ? 'Registration code (not required now)' : 'School registration code'}
+                  </label>
                   <div className="input-icon">
                     <KeyRound size={16} />
                     <input
@@ -141,12 +158,13 @@ export default function AuthPage() {
                       placeholder="EDU-XXXXXX"
                       value={form.regCode}
                       onChange={update('regCode')}
-                      required
+                      required={setupMode !== true}
                     />
                   </div>
                   <p className="field-hint">
-                    Asked to join? Your school admin (or the app owner) gives you
-                    a one-time code. Roles are never self-selected.
+                    {setupMode === true
+                      ? 'You are creating the owner account — no code needed. Set up school admin codes next from your dashboard.'
+                      : 'Asked to join? Your school admin (or the app owner) gives you a one-time code. Roles are never self-selected.'}
                   </p>
                 </div>
               </>

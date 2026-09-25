@@ -983,24 +983,33 @@ language plpgsql
 security definer
 as $$
 declare
-  v_profile_count integer;
-  v_dev_count     integer;
-  v_code          public.registration_codes;
+  v_dev_count integer;
+  v_existing  integer;
+  v_code      public.registration_codes;
 begin
-  select count(*) into v_profile_count from public.profiles;
+  select count(*) into v_existing from public.profiles;
+  select count(*) into v_dev_count from public.profiles where role = 'developer';
 
-  -- Owner bootstrap: the VERY FIRST account ever created becomes the developer.
-  -- After that, developer accounts are never creatable again.
-  if v_profile_count = 0 then
+  -- Owner bootstrap & one-time recovery: whenever NO developer account exists
+  -- (fresh install, OR the owner was deleted from Supabase auth), the next
+  -- account created becomes the developer again. Afterwards, developer
+  -- accounts can never be created, modified or deleted through the app.
+  if v_dev_count = 0 then
     insert into public.profiles (id, email, full_name, role, status)
     values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'full_name', ''), 'developer', 'active')
     on conflict (id) do nothing;
-    return new;
-  end if;
 
-  select count(*) into v_dev_count from public.profiles where role = 'developer';
-  if v_dev_count = 0 then
-    raise exception 'Setup incomplete: no developer account exists. Contact the system owner.';
+    insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+    values (
+      new.id,
+      'owner_bootstrap',
+      'profiles',
+      new.id,
+      jsonb_build_object(
+        'reason', case when v_existing = 0 then 'first_install' else 'owner_recovery' end
+      )
+    );
+    return new;
   end if;
 
   -- Everyone else must present a valid, unused registration code.
@@ -1035,6 +1044,19 @@ begin
 
   return new;
 end;
+$$;
+
+-- ── 29. should_bootstrap_owner() — does setup/recovery mode apply? ────────
+--    True when no developer account exists (fresh install or owner deleted),
+--    which means the next account created becomes the developer and therefore
+--    needs no registration code. Used by the sign-up page.
+create or replace function public.should_bootstrap_owner()
+returns boolean
+language sql
+stable
+security definer
+as $$
+  select (select count(*) from public.profiles where role = 'developer') = 0
 $$;
 
 -- ── 28c. admin_set_role — amended: developer is unmanageable ─────────────

@@ -14,10 +14,16 @@
 -- ────────────────────────────────────────────────────────────────────────
 -- 0. Roles
 --    developer · school_admin · staff · student · parent
+--    (CREATE TYPE has no "IF NOT EXISTS" — the DO block keeps it idempotent)
 -- ────────────────────────────────────────────────────────────────────────
-create type if not exists public.app_role as enum (
-  'developer', 'school_admin', 'staff', 'student', 'parent'
-);
+do $$
+begin
+  create type public.app_role as enum (
+    'developer', 'school_admin', 'staff', 'student', 'parent'
+  );
+exception
+  when duplicate_object then null;
+end $$;
 
 -- ────────────────────────────────────────────────────────────────────────
 -- 1. Profiles (one row per auth user)
@@ -179,6 +185,8 @@ create policy "anon may insert applications"
   with check (true);
 
 -- Authenticated users may view applications (Level 1 scope; roles come in L2)
+-- (also drops the old v1 wide-open read policy, if it exists)
+drop policy if exists "anon can read applications" on public.students;
 drop policy if exists "authenticated can read applications" on public.students;
 create policy "authenticated can read applications"
   on public.students

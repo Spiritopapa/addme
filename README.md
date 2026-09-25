@@ -22,7 +22,7 @@ locked down with Supabase **Row Level Security (RLS)**.
 | 2     | Students, staff & classes management            | ✅ live |
 | 3     | Grades, attendance & timetable                  | ✅ live |
 | 4     | Fees, payments & announcements                  | ✅ live |
-| 5     | Developer portal, audit log & polish            | ⏳ next |
+| 5     | Developer portal, audit log & polish            | ✅ live |
 
 ---
 

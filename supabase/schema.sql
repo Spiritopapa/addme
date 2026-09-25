@@ -780,3 +780,142 @@ create policy "announcements write staff"
   for all
   to authenticated
   using (public.get_user_role() in ('school_admin', 'developer', 'staff'));
+
+-- ════════════════════════════════════════════════════════════════════════
+-- 24. LEVEL 5 — Audit log + amendments (role changes & payments audited)
+-- ════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.audit_logs (
+  id         uuid primary key default gen_random_uuid(),
+  actor_id   uuid references public.profiles (id),
+  action     text not null,
+  entity     text not null default 'system',
+  entity_id  uuid,
+  details    jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.audit_logs enable row level security;
+
+create index if not exists audit_logs_created_idx on public.audit_logs (created_at desc);
+create index if not exists audit_logs_entity_idx on public.audit_logs (entity);
+
+-- Read: admins & developers only. Insert: NOBODY (the log_audit function is
+-- SECURITY DEFINER, so it can write while direct inserts stay blocked).
+drop policy if exists "audit_logs read scoped" on public.audit_logs;
+create policy "audit_logs read scoped"
+  on public.audit_logs
+  for select
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));
+
+drop policy if exists "audit_logs insert blocked" on public.audit_logs;
+create policy "audit_logs insert blocked"
+  on public.audit_logs
+  for insert
+  to authenticated
+  with check (false);
+
+-- ── 25. log_audit() — SECURITY DEFINER RPC ───────────────────────────────
+create or replace function public.log_audit(
+  p_action   text,
+  p_entity   text default 'system',
+  p_entity_id uuid default null,
+  p_details  jsonb default null
+)
+returns uuid
+language plpgsql
+security definer
+as $$
+declare
+  v_id uuid;
+begin
+  insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+  values (auth.uid(), p_action, p_entity, p_entity_id, p_details)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+-- ── 26. admin_set_role — amended to audit every role change ──────────────
+create or replace function public.admin_set_role(p_user_id uuid, p_role public.app_role)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_old public.app_role;
+begin
+  if public.get_user_role() not in ('school_admin', 'developer') then
+    raise exception 'Only school admins and developers can change roles';
+  end if;
+
+  select role into v_old from public.profiles where id = p_user_id;
+
+  if p_role <> 'developer'
+     and v_old = 'developer'
+     and (select count(*) from public.profiles where role = 'developer') <= 1 then
+    raise exception 'Cannot remove the last developer account';
+  end if;
+
+  update public.profiles set role = p_role, updated_at = now() where id = p_user_id;
+
+  insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+  values (
+    auth.uid(),
+    'role_change',
+    'profiles',
+    p_user_id,
+    jsonb_build_object('from', v_old, 'to', p_role)
+  );
+end;
+$$;
+
+-- ── 27. pay_fee — amended to audit every payment ─────────────────────────
+create or replace function public.pay_fee(
+  p_fee_id uuid,
+  p_amount numeric,
+  p_method text,
+  p_reference text
+)
+returns public.receipts
+language plpgsql
+security definer
+as $$
+declare
+  v_receipt public.receipts;
+begin
+  if public.get_user_role() not in ('school_admin', 'developer') then
+    raise exception 'Only school admins and developers can record payments';
+  end if;
+
+  if p_amount <= 0 then
+    raise exception 'Payment amount must be positive';
+  end if;
+
+  insert into public.receipts (fee_id, student_record_id, amount, method, reference, recorded_by)
+  select id, student_record_id, p_amount, p_method, p_reference, auth.uid()
+  from public.fees
+  where id = p_fee_id
+  returning * into v_receipt;
+
+  if v_receipt.id is null then
+    raise exception 'Fee not found';
+  end if;
+
+  update public.fees
+  set paid_amount = paid_amount + p_amount
+  where id = p_fee_id;
+
+  insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+  values (
+    auth.uid(),
+    'payment',
+    'fees',
+    p_fee_id,
+    jsonb_build_object('amount', p_amount, 'method', p_method, 'receipt', v_receipt.id)
+  );
+
+  return v_receipt;
+end;
+$$;

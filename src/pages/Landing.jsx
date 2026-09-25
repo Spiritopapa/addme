@@ -70,7 +70,7 @@ export default function Landing({ session }) {
       <section className="hero">
         <div className="hero-copy">
           <p className="hero-eyebrow">
-            <span className="pulse-dot" /> Level 1 · Auth & role portals
+            <span className="pulse-dot" /> v1.0 · all five levels live
           </p>
           <h1>
             One school. <span className="hero-accent">Five portals.</span>

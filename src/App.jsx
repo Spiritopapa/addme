@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useSession } from './lib/auth.js';
 import { supabaseConfigured } from './lib/supabase.js';
-import { canSeeStudents, canSeeClasses, canSeeStaff, canSeeAcademics, canSeeSubjects, canSeeFees, canSeeAnnouncements } from './lib/roles.js';
+import { canSeeStudents, canSeeClasses, canSeeStaff, canSeeAcademics, canSeeSubjects, canSeeFees, canSeeAnnouncements, canSeeDeveloper } from './lib/roles.js';
 import Landing from './pages/Landing.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import ApplyPage from './pages/ApplyPage.jsx';
@@ -20,6 +20,7 @@ import AttendanceView from './dashboards/AttendanceView.jsx';
 import TimetableView from './dashboards/TimetableView.jsx';
 import FeesView from './dashboards/FeesView.jsx';
 import AnnouncementsView from './dashboards/AnnouncementsView.jsx';
+import DeveloperPortal from './dashboards/DeveloperPortal.jsx';
 
 export default function App() {
   const location = useLocation();
@@ -83,6 +84,10 @@ export default function App() {
         <Route
           path="announcements"
           element={canSeeAnnouncements(user) ? <AnnouncementsView session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="developer"
+          element={canSeeDeveloper(user) ? <DeveloperPortal session={session} /> : <Navigate to="/app" replace />}
         />
         <Route path="users" element={<UsersDirectory session={session} />} />
         <Route path="settings" element={<SettingsPlaceholder />} />

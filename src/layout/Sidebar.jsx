@@ -21,11 +21,7 @@ import {
 import { userInitials } from '../lib/auth.js';
 import { ROLE_ADMIN, ROLE_STAFF, ROLE_DEVELOPER, roleInfo } from '../lib/roles.js';
 
-const COMING_SOON = [
-  { label: 'Reports & exports', icon: Puzzle, level: 'Level 5' },
-  { label: 'Audit log', icon: ShieldCheck, level: 'Level 5' },
-  { label: 'System health', icon: Rocket, level: 'Level 5' },
-];
+const COMING_SOON = [];
 
 export default function Sidebar({ session, onNavigate }) {
   const { profile } = session;
@@ -108,6 +104,13 @@ export default function Sidebar({ session, onNavigate }) {
       badge: 'L4',
     },
     {
+      label: 'Developer portal',
+      to: '/app/developer',
+      icon: Rocket,
+      show: role === ROLE_DEVELOPER,
+      badge: 'L5',
+    },
+    {
       label: 'User directory',
       to: '/app/users',
       icon: Users,
@@ -153,18 +156,22 @@ export default function Sidebar({ session, onNavigate }) {
           ))}
         </ul>
 
-        <p className="sidebar-label">Coming soon</p>
-        <ul>
-          {COMING_SOON.map((item) => (
-            <li key={item.label}>
-              <span className="nav-item disabled" aria-disabled="true">
-                <Lock size={15} />
-                <span>{item.label}</span>
-                <em className="nav-badge muted">{item.level}</em>
-              </span>
-            </li>
-          ))}
-        </ul>
+        {COMING_SOON.length > 0 && (
+          <>
+            <p className="sidebar-label">Coming soon</p>
+            <ul>
+              {COMING_SOON.map((item) => (
+                <li key={item.label}>
+                  <span className="nav-item disabled" aria-disabled="true">
+                    <Lock size={15} />
+                    <span>{item.label}</span>
+                    <em className="nav-badge muted">{item.level}</em>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </nav>
 
       <div className="sidebar-footer">

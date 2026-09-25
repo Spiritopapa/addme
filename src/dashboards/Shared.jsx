@@ -24,21 +24,21 @@ export function WelcomeBanner({ session }) {
         </p>
       </div>
       <span className="welcome-chip">
-        <Rocket size={16} /> Level 4 · live
+        <Rocket size={16} /> v1.0 · all levels live
       </span>
     </div>
   );
 }
 
 const ROADMAP = [
-  { level: 'Level 5', title: 'Developer portal & polish', text: 'Audit log, reports, exports and system health.' },
+  { level: 'v1.0', title: 'All five levels are live', text: 'Five role portals · RLS on every table · academics · finance · developer deck.' },
 ];
 
 export function RoadmapCard({ compact = false }) {
-  const items = compact ? ROADMAP.slice(0, 3) : ROADMAP;
+  const items = compact ? ROADMAP.slice(0, 2) : ROADMAP;
   return (
     <section className="card roadmap-card">
-      <h3 className="card-title">What’s next on the roadmap</h3>
+      <h3 className="card-title">Build status</h3>
       <ul className="roadmap">
         {items.map((r) => (
           <li key={r.level}>

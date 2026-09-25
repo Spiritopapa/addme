@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Users, FileText, CalendarCheck, ClipboardList, GraduationCap, BookOpen, UserCog, NotebookText, WalletCards, BadgeDollarSign, Megaphone } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Users, FileText, CalendarCheck, ClipboardList, GraduationCap, BookOpen, UserCog, NotebookText, WalletCards, BadgeDollarSign, Megaphone, ArrowRight } from 'lucide-react';
 import StatCard from '../components/ui/StatCard.jsx';
 import { WelcomeBanner, RoadmapCard } from './Shared.jsx';
 import { supabase } from '../lib/supabase.js';
@@ -128,7 +129,10 @@ export default function DeveloperDashboard({ session }) {
           </div>
         </div>
         <p className="card-note">
-          Full audit log & user management ship with the Level 5 developer portal.
+          <Link to="/app/developer" className="inline-link">
+            Open the developer portal <ArrowRight size={14} />
+          </Link>{' '}
+          — audit log, role management and CSV exports.
         </p>
       </div>
 

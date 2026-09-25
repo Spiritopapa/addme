@@ -128,3 +128,10 @@ export function canSeeFees(user) {
 export function canSeeAnnouncements(user) {
   return canSeeAcademics(user);
 }
+
+// ── Level 5 ───────────────────────────────────────────────────────────────
+
+/** May open the Developer Portal hub. */
+export function canSeeDeveloper(user) {
+  return hasRole(user, ROLE_DEVELOPER);
+}

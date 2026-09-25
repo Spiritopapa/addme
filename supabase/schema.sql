@@ -386,3 +386,201 @@ create policy "guardian_links write"
   for all
   to authenticated
   using (public.get_user_role() in ('school_admin', 'developer'));
+
+-- ════════════════════════════════════════════════════════════════════════
+-- 13. LEVEL 3 — Subjects, grades, attendance & timetable
+-- ════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.subjects (
+  id                  uuid primary key default gen_random_uuid(),
+  name                text not null,
+  code                text not null unique,
+  class_id            uuid references public.classes (id) on delete set null,
+  teacher_profile_id  uuid references public.profiles (id),
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create table if not exists public.grades (
+  id                uuid primary key default gen_random_uuid(),
+  student_record_id uuid not null references public.student_records (id) on delete cascade,
+  subject_id        uuid not null references public.subjects (id) on delete cascade,
+  term              text not null,
+  score             numeric(5, 2) check (score between 0 and 100),
+  grade_letter      text check (grade_letter in ('A', 'B', 'C', 'D', 'F')),
+  remarks           text,
+  recorded_by       uuid references public.profiles (id),
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  constraint grades_pair_unique unique (student_record_id, subject_id, term)
+);
+
+create table if not exists public.attendance (
+  id                uuid primary key default gen_random_uuid(),
+  student_record_id uuid not null references public.student_records (id) on delete cascade,
+  date              date not null default current_date,
+  status            text not null default 'present'
+                    check (status in ('present', 'absent', 'late', 'excused')),
+  marked_by         uuid references public.profiles (id),
+  notes             text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  constraint attendance_day_unique unique (student_record_id, date)
+);
+
+create table if not exists public.timetable (
+  id         uuid primary key default gen_random_uuid(),
+  class_id   uuid not null references public.classes (id) on delete cascade,
+  day        text not null check (day in ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')),
+  period     integer not null check (period between 1 and 12),
+  subject_id uuid references public.subjects (id) on delete set null,
+  start_time time,
+  end_time   time,
+  created_at timestamptz not null default now(),
+  constraint timetable_slot_unique unique (class_id, day, period)
+);
+
+-- updated_at triggers
+drop trigger if exists subjects_set_updated_at on public.subjects;
+create trigger subjects_set_updated_at before update on public.subjects
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists grades_set_updated_at on public.grades;
+create trigger grades_set_updated_at before update on public.grades
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists attendance_set_updated_at on public.attendance;
+create trigger attendance_set_updated_at before update on public.attendance
+  for each row execute function public.set_updated_at();
+
+-- indexes
+create index if not exists subjects_class_idx on public.subjects (class_id);
+create index if not exists grades_student_idx on public.grades (student_record_id);
+create index if not exists grades_subject_idx on public.grades (subject_id);
+create index if not exists attendance_student_day_idx on public.attendance (student_record_id, date);
+create index if not exists timetable_class_idx on public.timetable (class_id);
+
+-- ── 14. is_class_teacher_of() — helper for grades/attendance policies ─────
+create or replace function public.is_class_teacher_of(p_student_id uuid)
+returns boolean
+language sql
+stable
+security definer
+as $$
+  select exists (
+    select 1
+    from public.student_records sr
+    join public.classes c on c.id = sr.class_id
+    where sr.id = p_student_id
+      and c.class_teacher_id = auth.uid()
+  )
+$$;
+
+-- ── 15. subjects RLS ─────────────────────────────────────────────────────
+--    Read: any authenticated user (names are part of the shared timetable).
+--    Write: admins & developers.
+alter table public.subjects enable row level security;
+
+drop policy if exists "subjects read authenticated" on public.subjects;
+create policy "subjects read authenticated"
+  on public.subjects for select to authenticated using (true);
+
+drop policy if exists "subjects write staff" on public.subjects;
+create policy "subjects write staff"
+  on public.subjects
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));
+
+-- ── 16. grades RLS ───────────────────────────────────────────────────────
+--    Read:  the student · their linked parents · their class teacher ·
+--            admins & developers.
+--    Write: admins & developers, and the staff member who teaches that class.
+alter table public.grades enable row level security;
+
+drop policy if exists "grades read scoped" on public.grades;
+create policy "grades read scoped"
+  on public.grades
+  for select
+  to authenticated
+  using (
+    public.get_user_role() in ('school_admin', 'developer')
+    or (
+      public.get_user_role() = 'staff'
+      and public.is_class_teacher_of(student_record_id)
+    )
+    or student_record_id in (
+      select sr.id from public.student_records sr where sr.profile_id = auth.uid()
+    )
+    or student_record_id in (
+      select gl.student_record_id
+      from public.guardian_links gl
+      where gl.guardian_profile_id = auth.uid()
+    )
+  );
+
+drop policy if exists "grades write staff" on public.grades;
+create policy "grades write staff"
+  on public.grades
+  for all
+  to authenticated
+  using (
+    public.get_user_role() in ('school_admin', 'developer')
+    or (
+      public.get_user_role() = 'staff'
+      and public.is_class_teacher_of(student_record_id)
+    )
+  );
+
+-- ── 17. attendance RLS ───────────────────────────────────────────────────
+--    Same visibility & write rules as grades.
+alter table public.attendance enable row level security;
+
+drop policy if exists "attendance read scoped" on public.attendance;
+create policy "attendance read scoped"
+  on public.attendance
+  for select
+  to authenticated
+  using (
+    public.get_user_role() in ('school_admin', 'developer')
+    or (
+      public.get_user_role() = 'staff'
+      and public.is_class_teacher_of(student_record_id)
+    )
+    or student_record_id in (
+      select sr.id from public.student_records sr where sr.profile_id = auth.uid()
+    )
+    or student_record_id in (
+      select gl.student_record_id
+      from public.guardian_links gl
+      where gl.guardian_profile_id = auth.uid()
+    )
+  );
+
+drop policy if exists "attendance write staff" on public.attendance;
+create policy "attendance write staff"
+  on public.attendance
+  for all
+  to authenticated
+  using (
+    public.get_user_role() in ('school_admin', 'developer')
+    or (
+      public.get_user_role() = 'staff'
+      and public.is_class_teacher_of(student_record_id)
+    )
+  );
+
+-- ── 18. timetable RLS ────────────────────────────────────────────────────
+--    Read: any authenticated user. Write: admins & developers.
+alter table public.timetable enable row level security;
+
+drop policy if exists "timetable read authenticated" on public.timetable;
+create policy "timetable read authenticated"
+  on public.timetable for select to authenticated using (true);
+
+drop policy if exists "timetable write staff" on public.timetable;
+create policy "timetable write staff"
+  on public.timetable
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, GraduationCap, BookOpen, UserCog } from 'lucide-react';
+import { Users, FileText, CalendarCheck, ClipboardList, GraduationCap, BookOpen, UserCog, NotebookText } from 'lucide-react';
 import StatCard from '../components/ui/StatCard.jsx';
 import { WelcomeBanner, RoadmapCard } from './Shared.jsx';
 import { supabase } from '../lib/supabase.js';
@@ -32,8 +32,27 @@ export default function DeveloperDashboard({ session }) {
       const { count: students } = await supabase
         .from('student_records')
         .select('id', { count: 'exact', head: true });
+      const { count: subjects } = await supabase
+        .from('subjects')
+        .select('id', { count: 'exact', head: true });
+      const { count: grades } = await supabase
+        .from('grades')
+        .select('id', { count: 'exact', head: true });
+      const { count: attendance } = await supabase
+        .from('attendance')
+        .select('id', { count: 'exact', head: true });
 
-      const counts = { users: users?.length ?? 0, applications: applications ?? 0, classes: classes ?? 0, staff: staff ?? 0, students: students ?? 0, roles: {} };
+      const counts = {
+        users: users?.length ?? 0,
+        applications: applications ?? 0,
+        classes: classes ?? 0,
+        staff: staff ?? 0,
+        students: students ?? 0,
+        subjects: subjects ?? 0,
+        grades: grades ?? 0,
+        attendance: attendance ?? 0,
+        roles: {},
+      };
       for (const role of ALL_ROLES) {
         counts.roles[role] = (users ?? []).filter((u) => u.role === role).length;
       }
@@ -50,6 +69,13 @@ export default function DeveloperDashboard({ session }) {
         <StatCard label="Students" value={stats.students} icon={<GraduationCap size={20} />} tone="emerald" delay={80} />
         <StatCard label="Classes" value={stats.classes} icon={<BookOpen size={20} />} tone="blue" delay={160} />
         <StatCard label="Staff" value={stats.staff} icon={<UserCog size={20} />} tone="amber" delay={240} />
+      </div>
+
+      <div className="stat-grid stat-grid-sm">
+        <StatCard label="Subjects" value={stats.subjects} icon={<NotebookText size={18} />} tone="blue" delay={0} />
+        <StatCard label="Grade entries" value={stats.grades} icon={<ClipboardList size={18} />} tone="violet" delay={80} />
+        <StatCard label="Attendance marks" value={stats.attendance} icon={<CalendarCheck size={18} />} tone="emerald" delay={160} />
+        <StatCard label="Applications" value={stats.applications} icon={<FileText size={18} />} tone="amber" delay={240} />
       </div>
 
       <div className="card">

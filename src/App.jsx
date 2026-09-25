@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useSession } from './lib/auth.js';
 import { supabaseConfigured } from './lib/supabase.js';
-import { canSeeStudents, canSeeClasses, canSeeStaff } from './lib/roles.js';
+import { canSeeStudents, canSeeClasses, canSeeStaff, canSeeAcademics, canSeeSubjects } from './lib/roles.js';
 import Landing from './pages/Landing.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import ApplyPage from './pages/ApplyPage.jsx';
@@ -14,6 +14,10 @@ import UsersDirectory from './dashboards/UsersDirectory.jsx';
 import StudentsView from './dashboards/StudentsView.jsx';
 import ClassesView from './dashboards/ClassesView.jsx';
 import StaffView from './dashboards/StaffView.jsx';
+import SubjectsView from './dashboards/SubjectsView.jsx';
+import GradesView from './dashboards/GradesView.jsx';
+import AttendanceView from './dashboards/AttendanceView.jsx';
+import TimetableView from './dashboards/TimetableView.jsx';
 
 export default function App() {
   const location = useLocation();
@@ -53,6 +57,22 @@ export default function App() {
         <Route
           path="staff"
           element={canSeeStaff(user) ? <StaffView session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="subjects"
+          element={canSeeSubjects(user) ? <SubjectsView session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="grades"
+          element={canSeeAcademics(user) ? <GradesView session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="attendance"
+          element={canSeeAcademics(user) ? <AttendanceView session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="timetable"
+          element={canSeeAcademics(user) ? <TimetableView session={session} /> : <Navigate to="/app" replace />}
         />
         <Route path="users" element={<UsersDirectory session={session} />} />
         <Route path="settings" element={<SettingsPlaceholder />} />

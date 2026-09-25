@@ -20,8 +20,8 @@ locked down with Supabase **Row Level Security (RLS)**.
 | ----- | ---------------------------------------------- | ------ |
 | 1     | Modern UI, Auth, 5 role portals, RLS foundation | ✅ live |
 | 2     | Students, staff & classes management            | ✅ live |
-| 3     | Grades, attendance & timetable                  | ⏳ next |
-| 4     | Fees, payments & announcements                  | pending |
+| 3     | Grades, attendance & timetable                  | ✅ live |
+| 4     | Fees, payments & announcements                  | ⏳ next |
 | 5     | Developer portal, audit log & polish            | pending |
 
 ---

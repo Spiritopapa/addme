@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase.js';
 
 export default function StaffDashboard({ session }) {
   const { profile } = session;
-  const [data, setData] = useState({ pending: null, classes: [], studentsByClass: {} });
+  const [data, setData] = useState({ pending: null, classes: [], studentsByClass: {}, todayLessons: 0 });
 
   useEffect(() => {
     void (async () => {
@@ -29,7 +29,19 @@ export default function StaffDashboard({ session }) {
         byClass[s.class_id] = (byClass[s.class_id] ?? 0) + 1;
       }
 
-      setData({ pending: count ?? 0, classes: myClasses ?? [], studentsByClass: byClass });
+      // lessons I teach today (from the weekly timetable)
+      const myClassIds = (myClasses ?? []).map((c) => c.id);
+      let todayLessons = 0;
+      if (myClassIds.length) {
+        const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
+        const { data: slots } = await supabase
+          .from('timetable')
+          .select('class_id, day')
+          .in('class_id', myClassIds);
+        todayLessons = (slots ?? []).filter((t) => t.day === weekday).length;
+      }
+
+      setData({ pending: count ?? 0, classes: myClasses ?? [], studentsByClass: byClass, todayLessons });
     })();
   }, [profile?.id]);
 
@@ -47,7 +59,7 @@ export default function StaffDashboard({ session }) {
           delay={80}
         />
         <StatCard label="Pending applications" value={data.pending ?? '…'} icon={<ClipboardList size={20} />} tone="amber" delay={160} />
-        <StatCard label="Today’s lessons" value="L3" icon={<CalendarDays size={20} />} tone="emerald" delay={240} />
+        <StatCard label="Today’s lessons" value={data.todayLessons} icon={<CalendarDays size={20} />} tone="emerald" delay={240} />
       </div>
 
       {data.classes.length === 0 ? (

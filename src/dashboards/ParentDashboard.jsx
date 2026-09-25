@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Users, HeartHandshake, GraduationCap, WalletCards, School } from 'lucide-react';
 import StatCard from '../components/ui/StatCard.jsx';
 import { WelcomeBanner, RoadmapCard } from './Shared.jsx';
+import { letterFor, avgScore, attendanceRate } from '../lib/grades.js';
 import { supabase } from '../lib/supabase.js';
 
 export default function ParentDashboard({ session }) {
@@ -19,6 +20,9 @@ export default function ParentDashboard({ session }) {
       const ids = (links ?? []).map((l) => l.student_record_id);
       let records = [];
       let classes = [];
+      let gradesById = {};
+      let attendanceById = {};
+
       if (ids.length > 0) {
         const { data } = await supabase.from('student_records').select('*').in('id', ids);
         records = data ?? [];
@@ -27,12 +31,23 @@ export default function ParentDashboard({ session }) {
           const { data: cls } = await supabase.from('classes').select('id, name').in('id', classIds);
           classes = cls ?? [];
         }
+        const { data: grades } = await supabase.from('grades').select('student_record_id, score').in('student_record_id', ids);
+        for (const g of grades ?? []) {
+          (gradesById[g.student_record_id] ??= []).push(g);
+        }
+        const { data: attendance } = await supabase.from('attendance').select('student_record_id, status').in('student_record_id', ids);
+        for (const a of attendance ?? []) {
+          (attendanceById[a.student_record_id] ??= []).push(a);
+        }
       }
       const className = (id) => classes.find((c) => c.id === id)?.name ?? '—';
       setChildren(records.map((r) => ({
         ...r,
         class_name: className(r.class_id),
         relation: links?.find((l) => l.student_record_id === r.id)?.relation ?? 'Guardian',
+        avg: avgScore(gradesById[r.id] ?? []),
+        letter: letterFor(avgScore(gradesById[r.id] ?? [])),
+        attPct: attendanceRate(attendanceById[r.id] ?? []),
       })));
     })();
   }, [profile?.id]);
@@ -72,7 +87,9 @@ export default function ParentDashboard({ session }) {
                 </header>
                 <p>Class: <strong>{c.class_name}</strong></p>
                 <p className="card-note">
-                  {c.relation} · {c.status} {c.guardian_name ? `· ${c.guardian_name}` : ''}
+                  {c.relation}
+                  {c.avg != null ? ` · Avg ${c.avg}% (${c.letter})` : ' · No grades yet'}
+                  {c.attPct != null ? ` · Attendance ${c.attPct}%` : ''}
                 </p>
               </article>
             ))}

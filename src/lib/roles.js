@@ -104,3 +104,15 @@ export function canSeeStaff(user) {
 export function canSeeClasses(user) {
   return canSeeStudents(user);
 }
+
+// ── Level 3 permissions ───────────────────────────────────────────────────
+
+/** May open the Grades / Attendance / Timetable pages. */
+export function canSeeAcademics(user) {
+  return hasRole(user, ROLE_DEVELOPER, ROLE_ADMIN, ROLE_STAFF);
+}
+
+/** May manage subjects. */
+export function canSeeSubjects(user) {
+  return canManage(user);
+}

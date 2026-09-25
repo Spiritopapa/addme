@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import PageTitle from '../components/ui/PageTitle.jsx';
 import StatCard from '../components/ui/StatCard.jsx';
+import { Link } from 'react-router-dom';
 import { formatDate, userInitials } from '../lib/auth.js';
 import { ALL_ROLES, roleInfo } from '../lib/roles.js';
 import { supabase } from '../lib/supabase.js';
@@ -242,55 +243,18 @@ export default function DeveloperPortal({ session }) {
 
       {/* ── USERS & ROLES ────────────────────────────────────────────── */}
       {tab === 'users' && (
-        <div className="table-wrap card">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Email</th>
-                <th>Current role</th>
-                <th>Change role</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profiles.map((u) => {
-                const meta = roleInfo(u.role);
-                return (
-                  <tr key={u.id}>
-                    <td>
-                      <span className="cell-avatar" style={{ background: meta.soft, color: meta.color }}>
-                        {userInitials(u.full_name)}
-                      </span>
-                      {u.full_name || '—'}
-                    </td>
-                    <td>{u.email}</td>
-                    <td>
-                      <span className="role-chip" style={{ background: meta.soft, color: meta.color }}>
-                        {meta.label}
-                      </span>
-                    </td>
-                    <td className="role-cell">
-                      <select
-                        className="filter-select"
-                        aria-label={`Role for ${u.full_name || u.email}`}
-                        defaultValue={u.role}
-                        disabled={busy.has(u.id)}
-                        onChange={(e) => void changeRole(u, e.target.value)}
-                      >
-                        {ALL_ROLES.map((r) => (
-                          <option key={r} value={r}>{roleInfo(r).label}</option>
-                        ))}
-                      </select>
-                      {busy.has(u.id) && <span className="spinner-xs" aria-label="Saving role" />}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="card">
+          <h3 className="card-title">Account governance</h3>
           <p className="card-note">
-            Role changes call the RLS-protected <code>admin_set_role</code> RPC,
-            which refuses to remove the last developer and audits every change.
+            Role assignment, activation/suspension and registration-code issuing
+            for everyone except the developer lives on the{' '}
+            <Link to="/app/users-admin" className="inline-link">Users & codes</Link>{' '}
+            page. Role changes and deletions are written to the audit log.
+          </p>
+          <p className="card-note">
+            As the owner you can assign and suspend <strong>school admins</strong>,
+            and school admins manage everyone else. Developer accounts are
+            bootstrap-created only and can never be modified or deleted.
           </p>
         </div>
       )}

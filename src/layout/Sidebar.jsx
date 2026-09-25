@@ -17,6 +17,7 @@ import {
   CalendarCheck,
   Puzzle,
   Rocket,
+  KeyRound,
 } from 'lucide-react';
 import { userInitials } from '../lib/auth.js';
 import { ROLE_ADMIN, ROLE_STAFF, ROLE_DEVELOPER, roleInfo } from '../lib/roles.js';
@@ -102,6 +103,13 @@ export default function Sidebar({ session, onNavigate }) {
       icon: Megaphone,
       show: role === ROLE_ADMIN || role === ROLE_STAFF || role === ROLE_DEVELOPER,
       badge: 'L4',
+    },
+    {
+      label: 'Users & codes',
+      to: '/app/users-admin',
+      icon: KeyRound,
+      show: role === ROLE_ADMIN || role === ROLE_DEVELOPER,
+      badge: 'L6',
     },
     {
       label: 'Developer portal',

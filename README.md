@@ -80,10 +80,16 @@ npm run dev               # http://localhost:3000
 
 - **RLS is the source of truth.** The UI hides nav items and buttons by role,
   but the database rejects anything a role isn't allowed to do.
-- `get_user_role()` is defined `SECURITY DEFINER`, so policies that call it do
-  not recurse.
-- Roles are self-selected at sign-up **for the demo**; production deployment
-  should provision accounts server-side (Level 5).
+- **Role governance (v1.1):**
+  - The **developer (owner)** is bootstrap-created — the very first account
+    ever created becomes the developer and can **never** be created, modified
+    or deleted again through the app.
+  - Everyone else joins with a **one-time registration code** issued by a
+    school admin (staff/student/parent) or the developer (also school_admin).
+    Codes assign the role server-side; roles are never self-selected.
+  - The developer registers & manages **school admins**; school admins manage
+    staff, students & parents (assign/unassign roles, activate/suspend,
+    delete). All governed actions are audited.
 
 ---
 

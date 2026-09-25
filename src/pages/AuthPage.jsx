@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, User, Sparkles, LogIn, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, User, Sparkles, LogIn, ArrowRight, KeyRound } from 'lucide-react';
 import { signIn, signUp } from '../lib/auth.js';
-import { ALL_ROLES, ROLES } from '../lib/roles.js';
 
 const MODES = { SIGN_IN: 'signin', SIGN_UP: 'signup' };
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState(MODES.SIGN_IN);
-  const [form, setForm] = useState({ email: '', password: '', fullName: '', role: 'student' });
+  const [form, setForm] = useState({ email: '', password: '', fullName: '', regCode: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -58,7 +57,7 @@ export default function AuthPage() {
       email: form.email,
       password: form.password,
       fullName: form.fullName,
-      role: form.role,
+      regCode: form.regCode,
     });
     setBusy(false);
 
@@ -131,21 +130,23 @@ export default function AuthPage() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="role">I am a…</label>
-                  <select
-                    id="role"
-                    className="role-select"
-                    value={form.role}
-                    onChange={update('role')}
-                  >
-                    {ALL_ROLES.map((key) => (
-                      <option key={key} value={key}>
-                        {ROLES[key].label}
-                      </option>
-                    ))}
-                  </select>
+                  <label htmlFor="regCode">School registration code</label>
+                  <div className="input-icon">
+                    <KeyRound size={16} />
+                    <input
+                      id="regCode"
+                      type="text"
+                      autoComplete="off"
+                      spellCheck="false"
+                      placeholder="EDU-XXXXXX"
+                      value={form.regCode}
+                      onChange={update('regCode')}
+                      required
+                    />
+                  </div>
                   <p className="field-hint">
-                    Demo: roles are self-selected. In production, the school admin provisions accounts.
+                    Asked to join? Your school admin (or the app owner) gives you
+                    a one-time code. Roles are never self-selected.
                   </p>
                 </div>
               </>

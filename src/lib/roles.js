@@ -135,3 +135,19 @@ export function canSeeAnnouncements(user) {
 export function canSeeDeveloper(user) {
   return hasRole(user, ROLE_DEVELOPER);
 }
+
+/** May open the Users & codes management page. */
+export function canSeeUsersAdmin(user) {
+  return canManage(user);
+}
+
+/** Roles the current manager may assign (developer exempt — owner only). */
+export function assignableRoles(user) {
+  if (hasRole(user, ROLE_DEVELOPER)) {
+    return [ROLE_ADMIN, ROLE_STAFF, ROLE_STUDENT, ROLE_PARENT];
+  }
+  if (hasRole(user, ROLE_ADMIN)) {
+    return [ROLE_STAFF, ROLE_STUDENT, ROLE_PARENT];
+  }
+  return [];
+}

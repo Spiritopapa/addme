@@ -927,3 +927,300 @@ begin
   return v_receipt;
 end;
 $$;
+
+-- ════════════════════════════════════════════════════════════════════════
+-- 28. LEVEL 6 — Role governance (registration codes + account management)
+--     Developer (owner) > School admin > staff/student/parent
+-- ════════════════════════════════════════════════════════════════════════
+
+-- ── 28a. registration_codes ───────────────────────────────────────────────
+--    Single-use codes issued by the developer (any non-developer role) or by
+--    a school admin (staff/student/parent only). Users MUST present a valid
+--    code when creating an account; the trigger assigns the role server-side.
+create table if not exists public.registration_codes (
+  id                uuid primary key default gen_random_uuid(),
+  code              text not null unique,
+  role              public.app_role not null,
+  student_record_id uuid references public.student_records (id) on delete cascade,
+  created_by        uuid references public.profiles (id),
+  used_by           uuid references public.profiles (id),
+  used_at           timestamptz,
+  expires_at        timestamptz,
+  created_at        timestamptz not null default now()
+);
+
+alter table public.registration_codes enable row level security;
+
+-- creators see their own; developers see all (the sign-up trigger runs with
+-- SECURITY DEFINER, so it can validate & claim codes regardless of RLS).
+drop policy if exists "registration_codes read scoped" on public.registration_codes;
+create policy "registration_codes read scoped"
+  on public.registration_codes
+  for select
+  to authenticated
+  using (
+    public.get_user_role() = 'developer'
+    or created_by = auth.uid()
+  );
+
+-- all writes happen through the RPCs below
+drop policy if exists "registration_codes insert blocked" on public.registration_codes;
+create policy "registration_codes insert blocked"
+  on public.registration_codes for insert to authenticated with check (false);
+
+drop policy if exists "registration_codes update blocked" on public.registration_codes;
+create policy "registration_codes update blocked"
+  on public.registration_codes for update to authenticated with check (false);
+
+drop policy if exists "registration_codes delete blocked" on public.registration_codes;
+create policy "registration_codes delete blocked"
+  on public.registration_codes for delete to authenticated with check (false);
+
+-- ── 28b. handle_new_user — amended: owner bootstrap + code-based sign-up ──
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+declare
+  v_profile_count integer;
+  v_dev_count     integer;
+  v_code          public.registration_codes;
+begin
+  select count(*) into v_profile_count from public.profiles;
+
+  -- Owner bootstrap: the VERY FIRST account ever created becomes the developer.
+  -- After that, developer accounts are never creatable again.
+  if v_profile_count = 0 then
+    insert into public.profiles (id, email, full_name, role, status)
+    values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'full_name', ''), 'developer', 'active')
+    on conflict (id) do nothing;
+    return new;
+  end if;
+
+  select count(*) into v_dev_count from public.profiles where role = 'developer';
+  if v_dev_count = 0 then
+    raise exception 'Setup incomplete: no developer account exists. Contact the system owner.';
+  end if;
+
+  -- Everyone else must present a valid, unused registration code.
+  update public.registration_codes
+  set used_by = new.id, used_at = now()
+  where code = lower(trim(coalesce(new.raw_user_meta_data ->> 'reg_code', '')))
+    and used_by is null
+    and (expires_at is null or expires_at > now())
+  returning * into v_code;
+
+  if v_code.id is null then
+    raise exception 'A valid, unused registration code is required. Ask your school admin for one.';
+  end if;
+
+  insert into public.profiles (id, email, full_name, role, status)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'full_name', ''), v_code.role, 'active')
+  on conflict (id) do nothing;
+
+  -- Auto-link codes issued against a specific student record.
+  if v_code.student_record_id is not null then
+    if v_code.role = 'parent' then
+      insert into public.guardian_links (guardian_profile_id, student_record_id)
+      values (new.id, v_code.student_record_id)
+      on conflict (guardian_profile_id, student_record_id) do nothing;
+    elsif v_code.role = 'student' then
+      update public.student_records
+      set profile_id = new.id
+      where id = v_code.student_record_id
+        and profile_id is null;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+-- ── 28c. admin_set_role — amended: developer is unmanageable ─────────────
+create or replace function public.admin_set_role(p_user_id uuid, p_role public.app_role)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_caller public.app_role;
+  v_old    public.app_role;
+begin
+  select public.get_user_role() into v_caller;
+  if v_caller not in ('school_admin', 'developer') then
+    raise exception 'Only school admins and developers can change roles';
+  end if;
+
+  if p_role = 'developer' then
+    raise exception 'Developer accounts are created only during initial setup';
+  end if;
+
+  select role into v_old from public.profiles where id = p_user_id;
+  if v_old = 'developer' then
+    raise exception 'Developer accounts cannot be modified';
+  end if;
+
+  if v_caller = 'school_admin' and p_role not in ('staff', 'student', 'parent') then
+    raise exception 'School admins can only assign staff, student or parent roles';
+  end if;
+
+  update public.profiles set role = p_role, updated_at = now() where id = p_user_id;
+
+  insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+  values (auth.uid(), 'role_change', 'profiles', p_user_id, jsonb_build_object('from', v_old, 'to', p_role));
+end;
+$$;
+
+-- ── 28d. set_account_status — activate / suspend accounts ────────────────
+create or replace function public.set_account_status(p_user_id uuid, p_status text)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_caller public.app_role;
+  v_role   public.app_role;
+begin
+  select public.get_user_role() into v_caller;
+  if v_caller not in ('school_admin', 'developer') then
+    raise exception 'Unauthorized';
+  end if;
+
+  if p_status not in ('active', 'suspended') then
+    raise exception 'Invalid status';
+  end if;
+
+  select role into v_role from public.profiles where id = p_user_id;
+  if v_role = 'developer' then
+    raise exception 'Developer accounts cannot be modified';
+  end if;
+
+  if v_caller = 'school_admin' and v_role not in ('staff', 'student', 'parent') then
+    raise exception 'School admins can only manage staff, student or parent accounts';
+  end if;
+
+  update public.profiles set status = p_status, updated_at = now() where id = p_user_id;
+
+  insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+  values (auth.uid(), 'status_change', 'profiles', p_user_id, jsonb_build_object('to', p_status));
+end;
+$$;
+
+-- ── 28e. delete_account — admins delete staff/student/parent; devs may also
+--    delete school admins. The developer themselves is never deletable.
+create or replace function public.delete_account(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_caller public.app_role;
+  v_role   public.app_role;
+begin
+  select public.get_user_role() into v_caller;
+  if v_caller not in ('school_admin', 'developer') then
+    raise exception 'Unauthorized';
+  end if;
+
+  select role into v_role from public.profiles where id = p_user_id;
+  if v_role = 'developer' then
+    raise exception 'Developer accounts cannot be deleted';
+  end if;
+
+  if v_caller = 'school_admin' and v_role not in ('staff', 'student', 'parent') then
+    raise exception 'School admins can only delete staff, student or parent accounts';
+  end if;
+
+  -- clear references before removing the auth user (cascades to profile + links)
+  update public.staff_records set profile_id = null where profile_id = p_user_id;
+  update public.student_records set profile_id = null where profile_id = p_user_id;
+  update public.classes set class_teacher_id = null, class_teacher_name = null where class_teacher_id = p_user_id;
+  update public.announcements set author_id = null where author_id = p_user_id;
+  update public.fees set issued_by = null where issued_by = p_user_id;
+  update public.receipts set recorded_by = null where recorded_by = p_user_id;
+  update public.grades set recorded_by = null where recorded_by = p_user_id;
+  update public.attendance set marked_by = null where marked_by = p_user_id;
+  update public.audit_logs set actor_id = null where actor_id = p_user_id;
+  update public.registration_codes set used_by = null where used_by = p_user_id;
+
+  delete from auth.users where id = p_user_id;
+
+  insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+  values (auth.uid(), 'account_delete', 'profiles', p_user_id, jsonb_build_object('role', v_role));
+end;
+$$;
+
+-- ── 28f. create_registration_code / revoke_registration_code ─────────────
+create or replace function public.create_registration_code(
+  p_role              public.app_role,
+  p_student_record_id uuid default null
+)
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  v_caller public.app_role;
+  v_code   text;
+begin
+  select public.get_user_role() into v_caller;
+
+  if v_caller = 'developer' then
+    if p_role = 'developer' then
+      raise exception 'Developer codes cannot be issued';
+    end if;
+  elsif v_caller = 'school_admin' then
+    if p_role not in ('staff', 'student', 'parent') then
+      raise exception 'School admins can only issue staff, student or parent codes';
+    end if;
+  else
+    raise exception 'Only school admins and developers can issue registration codes';
+  end if;
+
+  if p_student_record_id is not null and p_role not in ('student', 'parent') then
+    raise exception 'Student binding is only valid for student or parent codes';
+  end if;
+
+  v_code := 'EDU-' || upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6));
+
+  insert into public.registration_codes (code, role, student_record_id, created_by, expires_at)
+  values (lower(v_code), p_role, p_student_record_id, auth.uid(), now() + interval '30 days');
+
+  insert into public.audit_logs (actor_id, action, entity, details)
+  values (auth.uid(), 'code_issue', 'registration_codes', jsonb_build_object('role', p_role));
+
+  return v_code;
+end;
+$$;
+
+create or replace function public.revoke_registration_code(p_code text)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_caller public.app_role;
+begin
+  select public.get_user_role() into v_caller;
+  if v_caller not in ('school_admin', 'developer') then
+    raise exception 'Unauthorized';
+  end if;
+
+  if v_caller = 'school_admin' then
+    update public.registration_codes
+    set expires_at = now()
+    where code = lower(trim(p_code))
+      and created_by = auth.uid()
+      and used_by is null;
+  else
+    update public.registration_codes
+    set expires_at = now()
+    where code = lower(trim(p_code))
+      and used_by is null;
+  end if;
+
+  insert into public.audit_logs (actor_id, action, entity, details)
+  values (auth.uid(), 'code_revoke', 'registration_codes', jsonb_build_object('code', lower(trim(p_code))));
+end;
+$$;

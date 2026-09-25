@@ -14,12 +14,15 @@ export async function signIn(email, password) {
   return { user: data.user, error: null };
 }
 
-export async function signUp({ email, password, fullName, role }) {
+export async function signUp({ email, password, fullName, regCode }) {
   const { data, error } = await supabase.auth.signUp({
     email: email.trim().toLowerCase(),
     password,
     options: {
-      data: { full_name: fullName.trim(), role },
+      data: {
+        full_name: fullName.trim(),
+        reg_code: (regCode ?? '').trim().toLowerCase(),
+      },
     },
   });
 
@@ -30,24 +33,8 @@ export async function signUp({ email, password, fullName, role }) {
     return { error: { message: 'No user was returned. Please try again.' } };
   }
 
-  // Ensure the matching profile row exists (the DB trigger also creates one;
-  // upsert makes this race-free). If it fails (e.g. schema not applied yet),
-  // the account still works — the trigger backfills it once the schema runs.
-  const { error: profileError } = await supabase.from('profiles').upsert(
-    {
-      id: user.id,
-      email: user.email,
-      full_name: fullName.trim(),
-      role,
-      status: 'active',
-    },
-    { onConflict: 'id' },
-  );
-
-  if (profileError && !/relation .* does not exist/i.test(profileError.message)) {
-    return { error: { message: `Account created, but profile failed to save: ${profileError.message}` } };
-  }
-
+  // The profile row (with its role) is created by the on_auth_user_created
+  // trigger, which validates the registration code server-side.
   return { user, error: null };
 }
 
@@ -101,23 +88,25 @@ export function formatDate(value, options) {
 // Session state hook (subscribe once, update on any auth change)
 // ---------------------------------------------------------------------------
 export function useSession() {
-  const [session, setSession] = useState({ user: null, profile: null, loading: true });
+  const [session, setSession] = useState({ user: null, profile: null, loading: true, suspended: false });
 
   const refresh = async () => {
     if (!supabaseConfigured) {
-      setSession({ user: null, profile: null, loading: false });
+      setSession({ user: null, profile: null, loading: false, suspended: false });
       return;
     }
     const { data } = await supabase.auth.getSession();
     if (data.session?.user) {
       const { profile } = await fetchMyProfile();
+      const suspended = profile?.status === 'suspended';
       setSession({
         user: data.session.user,
         profile: profile ?? { id: data.session.user.id, email: data.session.user.email },
         loading: false,
+        suspended,
       });
     } else {
-      setSession({ user: null, profile: null, loading: false });
+      setSession({ user: null, profile: null, loading: false, suspended: false });
     }
   };
 

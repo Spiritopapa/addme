@@ -1,12 +1,13 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useSession } from './lib/auth.js';
 import { supabaseConfigured } from './lib/supabase.js';
-import { canSeeStudents, canSeeClasses, canSeeStaff, canSeeAcademics, canSeeSubjects, canSeeFees, canSeeAnnouncements, canSeeDeveloper } from './lib/roles.js';
+import { canSeeStudents, canSeeClasses, canSeeStaff, canSeeAcademics, canSeeSubjects, canSeeFees, canSeeAnnouncements, canSeeDeveloper, canSeeUsersAdmin } from './lib/roles.js';
 import Landing from './pages/Landing.jsx';
 import AuthPage from './pages/AuthPage.jsx';
 import ApplyPage from './pages/ApplyPage.jsx';
 import AppShell from './layout/AppShell.jsx';
 import SettingsPlaceholder from './pages/SettingsPlaceholder.jsx';
+import SuspendedScreen from './pages/SuspendedScreen.jsx';
 import LoadingScreen from './components/ui/LoadingScreen.jsx';
 import DashboardRouter from './dashboards/DashboardRouter.jsx';
 import ApplicationsView from './dashboards/ApplicationsView.jsx';
@@ -21,16 +22,21 @@ import TimetableView from './dashboards/TimetableView.jsx';
 import FeesView from './dashboards/FeesView.jsx';
 import AnnouncementsView from './dashboards/AnnouncementsView.jsx';
 import DeveloperPortal from './dashboards/DeveloperPortal.jsx';
+import UserAdminView from './dashboards/UserAdminView.jsx';
 
 export default function App() {
   const location = useLocation();
-  const { user, profile, loading } = useSession();
+  const { user, profile, loading, suspended } = useSession();
 
   // Route transition — key the shell so it re-runs its entrance animation.
   const pageKey = `${location.pathname} ${location.hash}`;
 
   if (loading) {
     return <LoadingScreen />;
+  }
+
+  if (suspended) {
+    return <SuspendedScreen />;
   }
 
   const session = { user, profile };
@@ -88,6 +94,10 @@ export default function App() {
         <Route
           path="developer"
           element={canSeeDeveloper(user) ? <DeveloperPortal session={session} /> : <Navigate to="/app" replace />}
+        />
+        <Route
+          path="users-admin"
+          element={canSeeUsersAdmin(user) ? <UserAdminView session={session} /> : <Navigate to="/app" replace />}
         />
         <Route path="users" element={<UsersDirectory session={session} />} />
         <Route path="settings" element={<SettingsPlaceholder />} />

@@ -966,15 +966,15 @@ create policy "registration_codes read scoped"
 -- all writes happen through the RPCs below
 drop policy if exists "registration_codes insert blocked" on public.registration_codes;
 create policy "registration_codes insert blocked"
-  on public.registration_codes for insert to authenticated with check (false);
+  on public.registration_codes for insert to authenticated using (false);
 
 drop policy if exists "registration_codes update blocked" on public.registration_codes;
 create policy "registration_codes update blocked"
-  on public.registration_codes for update to authenticated with check (false);
+  on public.registration_codes for update to authenticated using (false);
 
 drop policy if exists "registration_codes delete blocked" on public.registration_codes;
 create policy "registration_codes delete blocked"
-  on public.registration_codes for delete to authenticated with check (false);
+  on public.registration_codes for delete to authenticated using (false);
 
 -- ── 28b. handle_new_user — amended: owner bootstrap + code-based sign-up ──
 create or replace function public.handle_new_user()

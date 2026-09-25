@@ -966,7 +966,7 @@ create policy "registration_codes read scoped"
 -- all writes happen through the RPCs below
 drop policy if exists "registration_codes insert blocked" on public.registration_codes;
 create policy "registration_codes insert blocked"
-  on public.registration_codes for insert to authenticated using (false);
+  on public.registration_codes for insert to authenticated with check (false);
 
 drop policy if exists "registration_codes update blocked" on public.registration_codes;
 create policy "registration_codes update blocked"

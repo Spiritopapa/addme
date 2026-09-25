@@ -67,7 +67,11 @@ export function roleInfo(role) {
 }
 
 export function hasRole(user, ...roles) {
-  return !!user && roles.includes(user.role);
+  if (!user) return false;
+  // Accept the app-role shape produced by useSession() (user.role) and also
+  // plain { role } / { ...profile } objects used by a few call sites.
+  const role = user.role ?? user.profile?.role;
+  return roles.includes(role);
 }
 
 /** The higher the rank, the more system access the role has (for UI ordering). */

@@ -100,7 +100,10 @@ export function useSession() {
       const { profile } = await fetchMyProfile();
       const suspended = profile?.status === 'suspended';
       setSession({
-        user: data.session.user,
+        // The raw auth user's JWT "role" claim is always 'authenticated', so
+        // expose the app role (from the profiles row) as user.role — this is
+        // what role.ts' hasRole/can* helpers check everywhere (nav, routes).
+        user: { ...data.session.user, role: profile?.role },
         profile: profile ?? { id: data.session.user.id, email: data.session.user.email },
         loading: false,
         suspended,

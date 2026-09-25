@@ -584,3 +584,199 @@ create policy "timetable write staff"
   for all
   to authenticated
   using (public.get_user_role() in ('school_admin', 'developer'));
+
+-- ════════════════════════════════════════════════════════════════════════
+-- 19. LEVEL 4 — Fees, receipts & announcements
+-- ════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.fees (
+  id                uuid primary key default gen_random_uuid(),
+  student_record_id uuid not null references public.student_records (id) on delete cascade,
+  description       text not null default 'Tuition',
+  amount            numeric(10, 2) not null check (amount > 0),
+  due_date          date not null default (current_date + interval '30 days'),
+  paid_amount       numeric(10, 2) not null default 0 check (paid_amount >= 0),
+  issued_by         uuid references public.profiles (id),
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+
+create table if not exists public.receipts (
+  id                uuid primary key default gen_random_uuid(),
+  fee_id            uuid not null references public.fees (id) on delete cascade,
+  student_record_id uuid not null references public.student_records (id) on delete cascade,
+  amount            numeric(10, 2) not null check (amount > 0),
+  method            text not null default 'cash'
+                    check (method in ('cash', 'card', 'mobile_money', 'bank')),
+  reference         text,
+  recorded_by       uuid references public.profiles (id),
+  created_at        timestamptz not null default now()
+);
+
+create table if not exists public.announcements (
+  id         uuid primary key default gen_random_uuid(),
+  title      text not null,
+  body       text not null,
+  audience   text not null default 'all'
+             check (audience in ('all', 'staff', 'class')),
+  class_id   uuid references public.classes (id) on delete cascade,
+  author_id  uuid references public.profiles (id),
+  author_name text,
+  pinned     boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- triggers
+drop trigger if exists fees_set_updated_at on public.fees;
+create trigger fees_set_updated_at before update on public.fees
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists announcements_set_updated_at on public.announcements;
+create trigger announcements_set_updated_at before update on public.announcements
+  for each row execute function public.set_updated_at();
+
+-- indexes
+create index if not exists fees_student_idx on public.fees (student_record_id);
+create index if not exists receipts_fee_idx on public.receipts (fee_id);
+create index if not exists announcements_class_idx on public.announcements (class_id);
+
+-- ── 20. pay_fee() — SECURITY DEFINER RPC ─────────────────────────────────
+--    Atomically writes the receipt and bumps the invoice's paid amount.
+--    Only school admins & developers may call it.
+create or replace function public.pay_fee(
+  p_fee_id uuid,
+  p_amount numeric,
+  p_method text,
+  p_reference text
+)
+returns public.receipts
+language plpgsql
+security definer
+as $$
+declare
+  v_receipt public.receipts;
+begin
+  if public.get_user_role() not in ('school_admin', 'developer') then
+    raise exception 'Only school admins and developers can record payments';
+  end if;
+
+  if p_amount <= 0 then
+    raise exception 'Payment amount must be positive';
+  end if;
+
+  insert into public.receipts (fee_id, student_record_id, amount, method, reference, recorded_by)
+  select id, student_record_id, p_amount, p_method, p_reference, auth.uid()
+  from public.fees
+  where id = p_fee_id
+  returning * into v_receipt;
+
+  if v_receipt.id is null then
+    raise exception 'Fee not found';
+  end if;
+
+  update public.fees
+  set paid_amount = paid_amount + p_amount
+  where id = p_fee_id;
+
+  return v_receipt;
+end;
+$$;
+
+-- ── 21. fees RLS ─────────────────────────────────────────────────────────
+--    Read: the student · their linked parents · admins & developers.
+--    Write: admins & developers. (Payments go through pay_fee.)
+alter table public.fees enable row level security;
+
+drop policy if exists "fees read scoped" on public.fees;
+create policy "fees read scoped"
+  on public.fees
+  for select
+  to authenticated
+  using (
+    public.get_user_role() in ('school_admin', 'developer')
+    or student_record_id in (
+      select sr.id from public.student_records sr where sr.profile_id = auth.uid()
+    )
+    or student_record_id in (
+      select gl.student_record_id
+      from public.guardian_links gl
+      where gl.guardian_profile_id = auth.uid()
+    )
+  );
+
+drop policy if exists "fees write admin" on public.fees;
+create policy "fees write admin"
+  on public.fees
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer'));
+
+-- ── 22. receipts RLS ─────────────────────────────────────────────────────
+--    Read: same scoping as fees. Write via pay_fee RPC (admin/dev only).
+alter table public.receipts enable row level security;
+
+drop policy if exists "receipts read scoped" on public.receipts;
+create policy "receipts read scoped"
+  on public.receipts
+  for select
+  to authenticated
+  using (
+    public.get_user_role() in ('school_admin', 'developer')
+    or student_record_id in (
+      select sr.id from public.student_records sr where sr.profile_id = auth.uid()
+    )
+    or student_record_id in (
+      select gl.student_record_id
+      from public.guardian_links gl
+      where gl.guardian_profile_id = auth.uid()
+    )
+  );
+
+-- ── 23. announcements RLS ────────────────────────────────────────────────
+--    Read:  admins/devs (all) · staff (all/staff/their classes) ·
+--           students (all/their class) · parents (all/their children's class).
+--    Write: admins, developers & staff.
+alter table public.announcements enable row level security;
+
+drop policy if exists "announcements read scoped" on public.announcements;
+create policy "announcements read scoped"
+  on public.announcements
+  for select
+  to authenticated
+  using (
+    public.get_user_role() in ('school_admin', 'developer')
+    or (
+      public.get_user_role() = 'staff'
+      and (
+        audience in ('all', 'staff')
+        or (
+          audience = 'class'
+          and class_id in (select c.id from public.classes c where c.class_teacher_id = auth.uid())
+        )
+      )
+    )
+    or audience = 'all'
+    or (
+      audience = 'class'
+      and class_id in (
+        select sr.class_id from public.student_records sr where sr.profile_id = auth.uid()
+      )
+    )
+    or (
+      audience = 'class'
+      and class_id in (
+        select distinct sr.class_id
+        from public.guardian_links gl
+        join public.student_records sr on sr.id = gl.student_record_id
+        where gl.guardian_profile_id = auth.uid()
+      )
+    )
+  );
+
+drop policy if exists "announcements write staff" on public.announcements;
+create policy "announcements write staff"
+  on public.announcements
+  for all
+  to authenticated
+  using (public.get_user_role() in ('school_admin', 'developer', 'staff'));

@@ -24,15 +24,14 @@ export function WelcomeBanner({ session }) {
         </p>
       </div>
       <span className="welcome-chip">
-        <Rocket size={16} /> Level 3 · live
+        <Rocket size={16} /> Level 4 · live
       </span>
     </div>
   );
 }
 
 const ROADMAP = [
-  { level: 'Level 4', title: 'Fees, payments & announcements', text: 'Invoices, receipts, and school-wide broadcasts.' },
-  { level: 'Level 5', title: 'Developer portal & polish', text: 'Audit log, user management and system health.' },
+  { level: 'Level 5', title: 'Developer portal & polish', text: 'Audit log, reports, exports and system health.' },
 ];
 
 export function RoadmapCard({ compact = false }) {

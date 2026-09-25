@@ -116,3 +116,15 @@ export function canSeeAcademics(user) {
 export function canSeeSubjects(user) {
   return canManage(user);
 }
+
+// ── Level 4 permissions ───────────────────────────────────────────────────
+
+/** May open the Fees & payments page. */
+export function canSeeFees(user) {
+  return canManage(user);
+}
+
+/** May open the Announcements authoring page. */
+export function canSeeAnnouncements(user) {
+  return canSeeAcademics(user);
+}

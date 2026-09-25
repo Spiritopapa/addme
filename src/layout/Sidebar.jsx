@@ -22,10 +22,9 @@ import { userInitials } from '../lib/auth.js';
 import { ROLE_ADMIN, ROLE_STAFF, ROLE_DEVELOPER, roleInfo } from '../lib/roles.js';
 
 const COMING_SOON = [
-  { label: 'Fees & payments', icon: WalletCards, level: 'Level 4' },
-  { label: 'Announcements', icon: Megaphone, level: 'Level 4' },
   { label: 'Reports & exports', icon: Puzzle, level: 'Level 5' },
-  { label: 'Developer portal', icon: Rocket, level: 'Level 5' },
+  { label: 'Audit log', icon: ShieldCheck, level: 'Level 5' },
+  { label: 'System health', icon: Rocket, level: 'Level 5' },
 ];
 
 export default function Sidebar({ session, onNavigate }) {
@@ -93,6 +92,20 @@ export default function Sidebar({ session, onNavigate }) {
       icon: Clock,
       show: role === ROLE_ADMIN || role === ROLE_STAFF || role === ROLE_DEVELOPER,
       badge: 'L3',
+    },
+    {
+      label: 'Fees & payments',
+      to: '/app/fees',
+      icon: WalletCards,
+      show: role === ROLE_ADMIN || role === ROLE_DEVELOPER,
+      badge: 'L4',
+    },
+    {
+      label: 'Announcements',
+      to: '/app/announcements',
+      icon: Megaphone,
+      show: role === ROLE_ADMIN || role === ROLE_STAFF || role === ROLE_DEVELOPER,
+      badge: 'L4',
     },
     {
       label: 'User directory',

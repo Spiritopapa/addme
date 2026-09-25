@@ -1143,6 +1143,58 @@ select.role-select:focus, input:focus, textarea:focus {
 .tt-mini-subj { font-size: 0.86rem; font-weight: 600; }
 .tt-mini time { font-size: 0.75rem; color: var(--muted); margin-left: auto; }
 
+/* ═══ LEVEL 4 ══════════════════════════════════════════════════════════ */
+
+.feed { display: grid; gap: 14px; }
+
+.announcement {
+  padding: 16px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: #fff;
+  box-shadow: var(--shadow-sm);
+  animation: fadeSlideUp 340ms ease both;
+  transition: transform 170ms ease, box-shadow 190ms ease;
+}
+
+.announcement:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+.announcement.pinned {
+  border-color: rgba(124, 58, 237, 0.35);
+  background: linear-gradient(160deg, #fff, rgba(124, 58, 237, 0.04));
+}
+
+.announcement header { display: flex; align-items: center; gap: 12px; }
+
+.ann-meta { flex: 1; min-width: 0; }
+
+.ann-meta h3 {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0;
+  font-size: 0.98rem; font-weight: 700;
+}
+
+.ann-meta p { margin: 2px 0 0; font-size: 0.78rem; color: var(--muted); }
+
+.ann-body { margin: 10px 0 0; font-size: 0.92rem; line-height: 1.6; white-space: pre-line; }
+
+.check-row {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 0.84rem; font-weight: 600; color: var(--ink); cursor: pointer;
+}
+
+.check-row input { accent-color: var(--brand); width: 16px; height: 16px; }
+
+.feed-mini { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+
+.feed-mini li {
+  padding: 12px 14px; border-radius: 12px; background: rgba(11, 16, 32, 0.045);
+  animation: fadeSlideUp 300ms ease both;
+}
+
+.feed-mini li strong { font-size: 0.9rem; font-weight: 700; }
+.feed-mini li p { margin: 3px 0 0; font-size: 0.85rem; color: var(--ink); line-height: 1.5; }
+.feed-mini li time { display: block; margin-top: 4px; font-size: 0.72rem; color: var(--muted); }
+
+.fee-note { font-size: 0.82rem; color: var(--danger); font-weight: 600; }
+
 /* ── Level 2 utilities ──────────────────────────────────────────────────── */
 
 .page-actions { display: inline-flex; align-items: center; gap: 10px; }

@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase.js';
 export default function ParentDashboard({ session }) {
   const { profile } = session;
   const [children, setChildren] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -22,6 +23,7 @@ export default function ParentDashboard({ session }) {
       let classes = [];
       let gradesById = {};
       let attendanceById = {};
+      let feesByChild = {};
 
       if (ids.length > 0) {
         const { data } = await supabase.from('student_records').select('*').in('id', ids);
@@ -39,6 +41,10 @@ export default function ParentDashboard({ session }) {
         for (const a of attendance ?? []) {
           (attendanceById[a.student_record_id] ??= []).push(a);
         }
+        const { data: fees } = await supabase.from('fees').select('student_record_id, amount, paid_amount').in('student_record_id', ids);
+        for (const f of fees ?? []) {
+          (feesByChild[f.student_record_id] ??= []).push(f);
+        }
       }
       const className = (id) => classes.find((c) => c.id === id)?.name ?? '—';
       setChildren(records.map((r) => ({
@@ -48,7 +54,15 @@ export default function ParentDashboard({ session }) {
         avg: avgScore(gradesById[r.id] ?? []),
         letter: letterFor(avgScore(gradesById[r.id] ?? [])),
         attPct: attendanceRate(attendanceById[r.id] ?? []),
+        fees: feesByChild[r.id] ?? [],
       })));
+      const { data: ann } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('pinned', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(6);
+      setAnnouncements(ann ?? []);
     })();
   }, [profile?.id]);
 
@@ -91,9 +105,30 @@ export default function ParentDashboard({ session }) {
                   {c.avg != null ? ` · Avg ${c.avg}% (${c.letter})` : ' · No grades yet'}
                   {c.attPct != null ? ` · Attendance ${c.attPct}%` : ''}
                 </p>
+                {(() => {
+                  const balance = c.fees.reduce((acc, f) => acc + (Number(f.amount) - Number(f.paid_amount)), 0);
+                  return balance > 0 ? (
+                    <p className="ann-body fee-note">Fees outstanding: <strong>₵{balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></p>
+                  ) : null;
+                })()}
               </article>
             ))}
           </div>
+        </section>
+      )}
+
+      {announcements.length > 0 && (
+        <section className="card">
+          <h3 className="card-title">School announcements</h3>
+          <ul className="feed-mini">
+            {announcements.map((a) => (
+              <li key={a.id}>
+                <strong>{a.title}</strong>
+                <p>{a.body}</p>
+                <time>{a.author_name || 'EduSphere'} · {a.created_at?.slice(0, 10)}</time>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

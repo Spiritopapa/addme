@@ -5,6 +5,8 @@ import { WelcomeBanner, RoadmapCard } from './Shared.jsx';
 import { letterFor, LETTER_COLORS, avgScore, attendanceRate } from '../lib/grades.js';
 import { supabase } from '../lib/supabase.js';
 
+const money = (v) => Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default function StudentDashboard({ session }) {
   const { profile } = session;
   const [data, setData] = useState({
@@ -14,6 +16,8 @@ export default function StudentDashboard({ session }) {
     subjects: [],
     attendance: [],
     timetable: [],
+    fees: [],
+    announcements: [],
   });
 
   useEffect(() => {
@@ -65,7 +69,25 @@ export default function StudentDashboard({ session }) {
         }
       }
 
-      setData({ record, class: myClass, grades, subjects, attendance, timetable });
+      let fees = [];
+      let announcements = [];
+      if (record) {
+        const { data: f } = await supabase
+          .from('fees')
+          .select('*')
+          .eq('student_record_id', record.id)
+          .order('due_date');
+        fees = f ?? [];
+      }
+      const { data: ann } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('pinned', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(6);
+      announcements = ann ?? [];
+
+      setData({ record, class: myClass, grades, subjects, attendance, timetable, fees, announcements });
     })();
   }, [profile?.id]);
 
@@ -168,6 +190,57 @@ export default function StudentDashboard({ session }) {
                 <span className="tt-mini-day">{t.day}</span>
                 <span className="tt-mini-subj">P{t.period} · {subjectName(t.subject_id)}</span>
                 <time>{t.start_time ?? ''}</time>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {data.fees.length > 0 && (
+        <section className="card">
+          <h3 className="card-title">My fees</h3>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Paid</th>
+                <th>Balance</th>
+                <th>Status</th>
+                <th>Due</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.fees.map((f) => {
+                const balance = Math.max(0, Number(f.amount) - Number(f.paid_amount));
+                const status = balance <= 0 ? 'paid' : Number(f.paid_amount) > 0 ? 'partial' : 'unpaid';
+                return (
+                  <tr key={f.id}>
+                    <td>{f.description}</td>
+                    <td>₵{money(f.amount)}</td>
+                    <td>₵{money(f.paid_amount)}</td>
+                    <td><strong>₵{money(balance)}</strong></td>
+                    <td>
+                      <span className={`badge ${status === 'paid' ? 'badge-approved' : status === 'partial' ? 'badge-pending' : 'badge-rejected'}`}>{status}</span>
+                    </td>
+                    <td>{f.due_date}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {data.announcements.length > 0 && (
+        <section className="card">
+          <h3 className="card-title">School announcements</h3>
+          <ul className="feed-mini">
+            {data.announcements.map((a) => (
+              <li key={a.id}>
+                <strong>{a.title}</strong>
+                <p>{a.body}</p>
+                <time>{a.author_name || 'EduSphere'} · {a.created_at?.slice(0, 10)}</time>
               </li>
             ))}
           </ul>

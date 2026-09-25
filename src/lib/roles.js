@@ -151,3 +151,21 @@ export function assignableRoles(user) {
   }
   return [];
 }
+
+/** Roles the current manager may create directly via provision_account.
+ *  The developer creates school admins; school admins create the rest. */
+export function provisionableRoles(user) {
+  if (hasRole(user, ROLE_DEVELOPER)) {
+    return [ROLE_ADMIN, ROLE_STAFF, ROLE_STUDENT, ROLE_PARENT];
+  }
+  if (hasRole(user, ROLE_ADMIN)) {
+    return [ROLE_STAFF, ROLE_STUDENT, ROLE_PARENT];
+  }
+  return [];
+}
+
+/** Roles the current manager may issue one-time registration codes for.
+ *  School admins are never code-created — only provisioned by the developer. */
+export function codeRoles(user) {
+  return provisionableRoles(user).filter((r) => r !== ROLE_ADMIN);
+}

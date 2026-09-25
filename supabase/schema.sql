@@ -929,13 +929,18 @@ end;
 $$;
 
 -- ════════════════════════════════════════════════════════════════════════
--- 28. LEVEL 6 — Role governance (registration codes + account management)
+-- 28. LEVEL 6 — Role governance (account provisioning + registration codes)
 --     Developer (owner) > School admin > staff/student/parent
+--     • provision_account()      — the developer creates school admins directly;
+--       school admins create staff/student/parent accounts directly.
+--     • create_registration_code() — optional one-time self sign-up codes
+--       (staff/student/parent only; school admin codes are never issued).
 -- ════════════════════════════════════════════════════════════════════════
 
 -- ── 28a. registration_codes ───────────────────────────────────────────────
---    Single-use codes issued by the developer (any non-developer role) or by
---    a school admin (staff/student/parent only). Users MUST present a valid
+--    Single-use codes issued by developers & school admins for staff /
+--    student / parent self sign-up. School admins are NEVER code-created —
+--    the developer provisions them directly. Users MUST present a valid
 --    code when creating an account; the trigger assigns the role server-side.
 create table if not exists public.registration_codes (
   id                uuid primary key default gen_random_uuid(),
@@ -976,17 +981,31 @@ drop policy if exists "registration_codes delete blocked" on public.registration
 create policy "registration_codes delete blocked"
   on public.registration_codes for delete to authenticated using (false);
 
--- ── 28b. handle_new_user — amended: owner bootstrap + code-based sign-up ──
+-- ── 28b. handle_new_user — owner bootstrap, provisioned accounts, codes ──
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
 as $$
 declare
-  v_dev_count integer;
-  v_existing  integer;
-  v_code      public.registration_codes;
+  v_dev_count  integer;
+  v_existing   integer;
+  v_code       public.registration_codes;
+  v_role       public.app_role;
+  v_provisioned boolean;
 begin
+  -- Admin-provisioned accounts (created by a developer/school admin through
+  -- provision_account): the role is stamped server-side in app metadata, so
+  -- no registration code is needed and owner-bootstrap never applies here.
+  v_provisioned := coalesce(new.raw_user_meta_data ->> 'admin_provisioned', 'false') = 'true';
+  if v_provisioned then
+    v_role := coalesce((new.raw_app_meta_data ->> 'role'), 'student')::public.app_role;
+    insert into public.profiles (id, email, full_name, role, status)
+    values (new.id, new.email, coalesce(new.raw_user_meta_data ->> 'full_name', ''), v_role, 'active')
+    on conflict (id) do nothing;
+    return new;
+  end if;
+
   select count(*) into v_existing from public.profiles;
   select count(*) into v_dev_count from public.profiles where role = 'developer';
 
@@ -1192,6 +1211,9 @@ begin
     if p_role = 'developer' then
       raise exception 'Developer codes cannot be issued';
     end if;
+    if p_role = 'school_admin' then
+      raise exception 'School admin accounts are added directly by the developer; codes cannot be issued for that role';
+    end if;
   elsif v_caller = 'school_admin' then
     if p_role not in ('staff', 'student', 'parent') then
       raise exception 'School admins can only issue staff, student or parent codes';
@@ -1244,5 +1266,86 @@ begin
 
   insert into public.audit_logs (actor_id, action, entity, details)
   values (auth.uid(), 'code_revoke', 'registration_codes', jsonb_build_object('code', lower(trim(p_code))));
+end;
+$$;
+-- ── 28g. provision_account — developer/school admin create logins directly ─
+--    • The developer creates school admin accounts directly (never by code).
+--    • School admins create staff / student / parent accounts directly.
+--    The role is stamped server-side (app metadata) and the on_auth_user_created
+--    trigger builds the profile; the new user's email is pre-confirmed so they
+--    can sign in with the temporary password right away.
+create or replace function public.provision_account(
+  p_email     text,
+  p_full_name text,
+  p_password  text,
+  p_role      public.app_role
+)
+returns uuid
+language plpgsql
+security definer
+as $$
+declare
+  v_caller public.app_role;
+  v_user   auth.users;
+begin
+  select public.get_user_role() into v_caller;
+
+  if v_caller not in ('school_admin', 'developer') then
+    raise exception 'Only school admins and developers can create accounts';
+  end if;
+
+  if v_caller = 'school_admin' and p_role not in ('staff', 'student', 'parent') then
+    raise exception 'School admins can only create staff, student or parent accounts';
+  end if;
+
+  if p_role = 'developer' then
+    raise exception 'Developer accounts are created only during initial setup';
+  end if;
+
+  p_email := lower(trim(p_email));
+  if p_email = '' then
+    raise exception 'An email address is required';
+  end if;
+  if p_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+    raise exception 'A valid email address is required';
+  end if;
+  if coalesce(trim(p_full_name), '') = '' then
+    raise exception 'Full name is required';
+  end if;
+  if coalesce(length(p_password), 0) < 8 then
+    raise exception 'Temporary password must be at least 8 characters';
+  end if;
+
+  if exists (select 1 from auth.users where lower(email) = p_email) then
+    raise exception 'An account with that email already exists';
+  end if;
+
+  -- Creates the auth user (email pre-confirmed) and fires on_auth_user_created,
+  -- which sees admin_provisioned in the user metadata and builds the profile
+  -- with the role from app metadata — no registration code involved.
+  select * into v_user
+  from auth.admin_create_user(
+    jsonb_build_object(
+      'email', p_email,
+      'password', p_password,
+      'email_confirm', true,
+      'user_metadata', jsonb_build_object(
+        'full_name', trim(p_full_name),
+        'admin_provisioned', 'true'
+      ),
+      'app_metadata', jsonb_build_object('role', p_role)
+    )
+  );
+
+  insert into public.audit_logs (actor_id, action, entity, entity_id, details)
+  values (
+    auth.uid(),
+    'account_provision',
+    'profiles',
+    v_user.id,
+    jsonb_build_object('email', p_email, 'role', p_role)
+  );
+
+  return v_user.id;
 end;
 $$;

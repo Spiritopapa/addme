@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, Trash2, KeyRound, Copy, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Trash2, KeyRound, Copy, ShieldCheck, UserPlus, Sparkles, Eye, EyeOff } from 'lucide-react';
 import PageTitle from '../components/ui/PageTitle.jsx';
 import { formatDate, userInitials } from '../lib/auth.js';
-import { ROLE_ADMIN, ROLE_DEVELOPER, roleInfo, assignableRoles } from '../lib/roles.js';
+import { ROLE_ADMIN, ROLE_DEVELOPER, roleInfo, assignableRoles, provisionableRoles, codeRoles } from '../lib/roles.js';
 import { supabase } from '../lib/supabase.js';
+
+const EMPTY_CREATE = { role: 'staff', full_name: '', email: '', password: '' };
 
 export default function UserAdminView({ session }) {
   const { user } = session;
   const role = user?.profile?.role ?? session.profile?.role;
   const isDev = role === ROLE_DEVELOPER;
   const allowedTargets = assignableRoles({ role });
+  const provisionTargets = provisionableRoles({ role });
+  const codeTargets = codeRoles({ role });
 
   const [profiles, setProfiles] = useState([]);
   const [codes, setCodes] = useState([]);
@@ -17,8 +21,11 @@ export default function UserAdminView({ session }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(new Set());
   const [message, setMessage] = useState(null);
-  const [genForm, setGenForm] = useState({ role: allowedTargets[0] ?? 'staff', student_record_id: '' });
+  const [genForm, setGenForm] = useState({ role: codeTargets[0] ?? 'staff', student_record_id: '' });
   const [lastCode, setLastCode] = useState(null);
+  const [createForm, setCreateForm] = useState({ ...EMPTY_CREATE, role: provisionTargets[0] ?? 'staff' });
+  const [showPass, setShowPass] = useState(false);
+  const [busyCreate, setBusyCreate] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -123,6 +130,53 @@ export default function UserAdminView({ session }) {
     setMessage({ type: 'success', text: `${code.toUpperCase()} copied.` });
   };
 
+  // MARKER:UAV_CREATE
+  const randomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let out = '';
+    const buf = new Uint32Array(14);
+    crypto.getRandomValues(buf);
+    for (let i = 0; i < buf.length; i++) out += chars[buf[i] % chars.length];
+    setCreateForm((prev) => ({ ...prev, password: out }));
+    setShowPass(true);
+  };
+
+  const createAccount = async () => {
+    const email = createForm.email.trim().toLowerCase();
+    if (!createForm.full_name.trim()) {
+      setMessage({ type: 'error', text: 'Full name is required.' });
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setMessage({ type: 'error', text: 'A valid email address is required.' });
+      return;
+    }
+    if (createForm.password.length < 8) {
+      setMessage({ type: 'error', text: 'Temporary password must be at least 8 characters.' });
+      return;
+    }
+    setBusyCreate(true);
+    setMessage(null);
+    const { error } = await supabase.rpc('provision_account', {
+      p_email: email,
+      p_full_name: createForm.full_name.trim(),
+      p_password: createForm.password,
+      p_role: createForm.role,
+    });
+    setBusyCreate(false);
+    if (error) {
+      setMessage({ type: 'error', text: error.message });
+      return;
+    }
+    setMessage({
+      type: 'success',
+      text: `${roleInfo(createForm.role).label} account created for ${email}. Share the temporary password securely — they can sign in right away.`,
+    });
+    setCreateForm({ ...EMPTY_CREATE, role: provisionTargets[0] ?? 'staff' });
+    setShowPass(false);
+    void load();
+  };
+
   const codeState = (c) => {
     if (c.used_by) return 'used';
     if (c.expires_at && c.expires_at < new Date().toISOString()) return 'expired';
@@ -134,7 +188,7 @@ export default function UserAdminView({ session }) {
       <PageTitle
         eyebrow="Level 6 · Governance"
         title="Users & registration codes"
-        sub="Assign roles, activate or suspend accounts, and issue one-time registration codes. The developer (owner) is never listed or editable here."
+        sub="Create accounts, assign roles, activate or suspend, and issue one-time staff/student/parent registration codes. The developer (owner) is never listed or editable here."
         actions={(
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw size={15} /> Refresh
@@ -227,13 +281,75 @@ export default function UserAdminView({ session }) {
         )}
       </section>
 
+      {/* MARKER:UAV_CREATE_CARD */}
+      {/* ── Create account (direct provisioning) ─────────────────────── */}
+      <section className="card">
+        <h3 className="card-title">Create an account</h3>
+        <p className="card-note">
+          {isDev
+            ? <>Add a <strong>school admin</strong> (or staff, student, parent) directly — the login is created immediately, no registration code needed. Share the temporary password securely.</>
+            : <>Add a <strong>staff</strong>, <strong>student</strong> or <strong>parent</strong> account directly — the login is created immediately, no registration code needed. Share the temporary password securely.</>}
+        </p>
+        <div className="account-create">
+          <select
+            className="filter-select"
+            aria-label="Role for the new account"
+            value={createForm.role}
+            onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
+          >
+            {provisionTargets.map((r) => (
+              <option key={r} value={r}>{roleInfo(r).label}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            aria-label="Full name"
+            placeholder="Full name"
+            value={createForm.full_name}
+            onChange={(e) => setCreateForm({ ...createForm, full_name: e.target.value })}
+          />
+          <input
+            type="email"
+            aria-label="Email"
+            placeholder="Email"
+            value={createForm.email}
+            onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+          />
+          <div className="input-icon">
+            <input
+              type={showPass ? 'text' : 'password'}
+              aria-label="Temporary password"
+              placeholder="Temporary password (min 8 chars)"
+              value={createForm.password}
+              onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              aria-label={showPass ? 'Hide password' : 'Show password'}
+              onClick={() => setShowPass((v) => !v)}
+            >
+              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          <div className="account-actions">
+            <button type="button" className="btn btn-ghost btn-sm" title="Generate a random password" aria-label="Generate a random password" onClick={randomPassword}>
+              <Sparkles size={15} /> Generate
+            </button>
+            <button type="button" className="btn btn-primary" disabled={busyCreate} onClick={() => void createAccount()}>
+              <UserPlus size={15} /> {busyCreate ? 'Creating…' : 'Create account'}
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* MARKER:UAV_CODES */}
       <section className="card">
         <h3 className="card-title">Issue a registration code</h3>
         <p className="card-note">
           Share this code with the person joining; they enter it when creating
           their account. Codes are single-use and valid for 30 days.
-          {isDev ? 'As the developer you may also issue school admin codes.' : 'As a school admin you can issue staff, student or parent codes.'}
+          {isDev ? 'Codes are for staff, student or parent self sign-up only — school admins are added directly with the form above.' : 'Issue a staff, student or parent code, or create their login directly with the form above.'}
         </p>
         <div className="code-issue">
           <select
@@ -242,7 +358,7 @@ export default function UserAdminView({ session }) {
             value={genForm.role}
             onChange={(e) => setGenForm({ ...genForm, role: e.target.value })}
           >
-            {allowedTargets.map((r) => (
+            {codeTargets.map((r) => (
               <option key={r} value={r}>{roleInfo(r).label}</option>
             ))}
           </select>

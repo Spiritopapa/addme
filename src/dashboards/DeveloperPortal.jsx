@@ -246,15 +246,17 @@ export default function DeveloperPortal({ session }) {
         <div className="card">
           <h3 className="card-title">Account governance</h3>
           <p className="card-note">
-            Role assignment, activation/suspension and registration-code issuing
-            for everyone except the developer lives on the{' '}
-            <Link to="/app/users-admin" className="inline-link">Users & codes</Link>{' '}
+            Account creation, role assignment, activation/suspension and
+            staff/student/parent registration codes for everyone except the
+            developer live on the{' '}
+            <Link to="/app/users-admin" className="inline-link">Users &amp; codes</Link>{' '}
             page. Role changes and deletions are written to the audit log.
           </p>
           <p className="card-note">
-            As the owner you can assign and suspend <strong>school admins</strong>,
-            and school admins manage everyone else. Developer accounts are
-            bootstrap-created only and can never be modified or deleted.
+            As the owner you can add <strong>school admins</strong> directly
+            (no code needed), and school admins create staff, student &amp;
+            parent accounts. Developer accounts are bootstrap-created only and
+            can never be modified or deleted.
           </p>
         </div>
       )}

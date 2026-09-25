@@ -163,8 +163,8 @@ export default function AuthPage() {
                   </div>
                   <p className="field-hint">
                     {setupMode === true
-                      ? 'You are creating the owner account — no code needed. Set up school admin codes next from your dashboard.'
-                      : 'Asked to join? Your school admin (or the app owner) gives you a one-time code. Roles are never self-selected.'}
+                      ? 'You are creating the owner account — no code needed. Add your first school admin from the Users & codes page next.'
+                      : 'Asked to join? Your school admin creates your account, or gives you a one-time staff/student/parent code. Roles are never self-selected.'}
                   </p>
                 </div>
               </>

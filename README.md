@@ -87,10 +87,12 @@ npm run dev               # http://localhost:3000
     the developer again (a recovery path shown on the sign-in page); apart
     from that, developer accounts can never be created, modified or deleted
     through the app.
-  - Everyone else joins with a **one-time registration code** issued by a
-    school admin (staff/student/parent) or the developer (also school_admin).
-    Codes assign the role server-side; roles are never self-selected.
-  - The developer registers & manages **school admins**; school admins manage
+  - The developer **creates school admin accounts directly** (full name +
+    email + temporary password); school admins create **staff, student &
+    parent** accounts the same way. Roles are stamped server-side by the
+    database — they are never self-selected.
+  - Optional **one-time registration codes** (staff/student/parent only) let a
+    school admin invite someone to self-register. School admins manage their
     staff, students & parents (assign/unassign roles, activate/suspend,
     delete). All governed actions are audited.
 
